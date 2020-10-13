@@ -1,15 +1,15 @@
-from sqlalchemy import create_engine
+from sqlalchemy import and_, or_
 import dataset
 import pandas as pd
 
-class extractor():
+class Extractor():
     def __init__(self, db_path):
         self.database = db_path
 
-    def from_metrics(self,db_path, gen, table_name, agent_id, **kwargs):
+    def from_metrics(self, gen, sim_type, agent_id, **kwargs):
         table_name = '_'.join([str(gen), sim_type, 'metrics', agent_id])
 
-        db = dataset.connect(db_path)
+        db = dataset.connect(self.database)
         table = db[table_name]
 
         data = []
@@ -23,6 +23,25 @@ class extractor():
 
         return pd.DataFrame.from_dict(dicter)
 
-    def from_transactions(self):
+    def from_transactions(self, db_path, table_name, time_consumption_interval:tuple):
+        db = dataset.connect(db_path)
+        table = db[table_name].table
+        statement = table.select().where(and_(table.c.time_consumption >= time_consumption_interval[0],
+                                              table.c.time_consumption <= time_consumption_interval[1]))
+        transactions = db.query(statement)
 
+        return pd.DataFrame(transactions)
+
+    def extract_config(self):
+        table = 'configs'
+        db = dataset.connect(self.database)
+        db[table]
         return False
+
+agent_id = 'egauge19821'
+db_path1 = 'postgresql://postgres:postgres@stargate/remote_agent_test_np'
+sim_type = 'training'
+extractor = Extractor(db_path1)
+dataframe = extractor.from_metrics(0, sim_type, agent_id)
+
+print(dataframe.head())
