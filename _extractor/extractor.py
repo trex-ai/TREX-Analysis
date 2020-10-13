@@ -1,6 +1,7 @@
 from sqlalchemy import and_, or_
 import dataset
 import pandas as pd
+import json
 
 class Extractor():
     def __init__(self, db_path):
@@ -35,8 +36,12 @@ class Extractor():
     def extract_config(self):
         table = 'configs'
         db = dataset.connect(self.database)
-        db[table]
-        return False
+        tab = db[table]
+        data = []
+        for row in tab:
+            data.append(row)
+
+        return json.dump(data[0])
 
 agent_id = 'egauge19821'
 db_path1 = 'postgresql://postgres:postgres@stargate/remote_agent_test_np'
