@@ -41,7 +41,7 @@ class Extractor():
         for row in tab:
             data.append(row)
 
-        return json.dump(data[0])
+        return json.dumps(data[0])
 
 agent_id = 'egauge19821'
 db_path1 = 'postgresql://postgres:postgres@stargate/remote_agent_test_np'

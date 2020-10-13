@@ -30,8 +30,7 @@ start_gen = 0
 
 extractor = Extractor(db_path1)
 agent_market_df = extractor.from_metrics(start_gen, sim_type, agent_id)
-
-# engine = create_engine('postgresql://postgres:postgres@stargate/profiles')
+experiment_config = extractor.extract_config()
 
 
 # Construct an MPD
