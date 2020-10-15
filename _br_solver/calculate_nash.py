@@ -4,8 +4,10 @@ import pandas as pd
 from _extractor.extractor import Extractor
 from sqlalchemy import create_engine
 import numpy as np
+import copy
 
-from _utils.market_simulation import _get_settlement
+from _utils.market_simulation import _get_settlement, match
+# import _utils.market_simulation
 
 # ----------------------------------------------------------------------------------------------------------------------
 # tests
@@ -15,6 +17,8 @@ from _utils.market_simulation import _get_settlement
 
 def _test_settlement_process(participants_dict, market_df):
     print('checking baseline settlement frequency for all learning agents....')
+
+    ats = {}
 
     for participant in participants_dict:
         print(participant, ' :')
@@ -67,7 +71,8 @@ def _test_settlement_process(participants_dict, market_df):
 
         # num_sucessfull_settlements = len(sucessfull_settlements)
         # print(' -- ratio of sucessfull settlements: ', num_sucessfull_settlements / num_attempted_settlements)
-
+        ats[participant] = attempted_settlements
+    return ats
 
 
 def _check_config(config):
@@ -79,6 +84,38 @@ def _check_config(config):
 
     if 'start_datetime' not in config['data']['study'].keys():
         print('missing one of the sub^2-keys <start_datetime> or <days>')
+
+def _test_settlement_process_2(participants:dict, learning_agent_id:str, market_df):
+    learning_agent = participants[learning_agent_id]
+    # opponents = copy.deepcopy(participants)
+    # opponents.pop(learning_agent_id, None)
+    open = {}
+    learning_agent_times_delivery = []
+    settlements = []
+
+    for idx in range(len(learning_agent['metrics']['actions_dict'])):
+        for participant_id in participants:
+            agent_actions = participants[participant_id]['metrics']['actions_dict'][idx]
+
+            for action in ('bids', 'asks'):
+                if action in agent_actions:
+                    for time_delivery in agent_actions[action]:
+                        if time_delivery not in open:
+                            open[time_delivery] = {}
+                        if action not in open[time_delivery]:
+                            open[time_delivery][action] = []
+
+                        aa = agent_actions[action][time_delivery]
+                        aa['participant_id'] = participant_id
+                        open[time_delivery][action].append(aa)
+                        if participant_id == learning_agent_id:
+                            learning_agent_times_delivery.append(time_delivery)
+
+    for t_d in learning_agent_times_delivery:
+        if 'bids' in open[t_d] and 'asks' in open[t_d]:
+            settlements.extend(match(open[t_d]['bids'], open[t_d]['asks'], 'solar', t_d))
+
+    return settlements
 
 # ----------------------------------------------------------------------------------------------------------------------
 # general stuff we need for this to work
@@ -130,8 +167,8 @@ participants_dict = exp_config['data']['participants']
 participants_dict = _add_metrics_to_participants(participants_dict)
 
 market_df = extractor.from_market(start_gen, sim_type)
-
-_test_settlement_process(participants_dict, market_df)
+print(participants_dict)
+settlements = _test_settlement_process_2(participants_dict, agent_id, market_df)
 
 
 # participants_dict[participant]['metrics']['actions_dict'] for participant in participants_dict.keys()
