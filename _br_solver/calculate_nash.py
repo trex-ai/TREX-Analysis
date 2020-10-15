@@ -5,7 +5,69 @@ from _extractor.extractor import Extractor
 from sqlalchemy import create_engine
 import numpy as np
 
-from _br_solver.market_simulation import _get_settlement
+from _utils.market_simulation import _get_settlement
+
+# ----------------------------------------------------------------------------------------------------------------------
+# tests
+# test settlement process by attempting to verify what we should also have in the DB
+# the test is passed if we get the market simulation accuretely represents the market
+# FOR NOW this probably does not account for self-consumption!!!
+
+def _test_settlement_process(participants_dict, market_df):
+    print('checking baseline settlement frequency for all learning agents....')
+
+    for participant in participants_dict:
+        print(participant, ' :')
+
+        # get stuff from the market df, filter out grid and self-consumption
+        sucessfull_bids_log = market_df[market_df['buyer_id'] == participant]
+        sucessfull_bids_log = sucessfull_bids_log[sucessfull_bids_log['seller_id'] != 'grid']
+        sucessfull_bids_log = sucessfull_bids_log[sucessfull_bids_log['seller_id'] != participant]
+        # sucessfull_bids_log = sucessfull_bids_log[sucessfull_bids_log['energy_source'] == 'solar']
+
+        sucessfull_asks_log = market_df[market_df['seller_id'] == participant]
+        sucessfull_asks_log = sucessfull_asks_log[sucessfull_asks_log['buyer_id'] != 'grid']
+        sucessfull_asks_log = sucessfull_asks_log[sucessfull_asks_log['buyer_id'] != participant]
+        # sucessfull_asks_log = sucessfull_asks_log[sucessfull_asks_log['energy_source'] == 'solar']
+
+
+        # simulated market stuff
+        attempted_settlements = []
+        print(participants_dict[participant]['metrics']['actions_dict'])
+        for timestep in range(len(participants_dict[participant]['metrics']['actions_dict'])):
+            opponents_actions = [participants_dict[opponent]['metrics']['actions_dict'][timestep] for opponent
+                                 in participants_dict.keys() if opponent != participant]
+            attempted_settlements.extend(_get_settlement(opponent_actions_ts=opponents_actions,
+                                                         learner_action=participants_dict[participant]['metrics']['actions_dict'][timestep]))
+
+        # separate into sucessfull bids and asks
+        sucessfull_settlements = [settlement for settlement in attempted_settlements if settlement != []]
+        sucessfull_bids_pseudo = [settlement for settlement in sucessfull_settlements if settlement[0] == 'bid']
+        sucessful_bid_amount_pseudo = 0
+        for settlement in sucessfull_bids_pseudo:
+            sucessful_bid_amount_pseudo += settlement[1]
+
+        sucessfull_asks_pseudo = [settlement for settlement in sucessfull_settlements if settlement[0] == 'ask']
+        sucessful_ask_amount_pseudo = 0
+        for settlement in sucessfull_asks_pseudo:
+            sucessful_ask_amount_pseudo += settlement[1]
+
+        print('checking simulated settlement cycles vs actual settlement cycles:')
+        participant_bids = market_df[market_df['buyer_id'] == participant]
+        participant_bids = participant_bids[participant_bids['seller_id'] != participant]
+        print(len(attempted_settlements), 'vs ', participant_bids.shape[0])
+
+
+
+        print('-- sucessfull_bids taken from market_sim: ', len(sucessfull_bids_pseudo), ', amount ', sucessful_bid_amount_pseudo)
+        print('-- sucessfull_bids taken from market_df: ', sucessfull_bids_log.shape[0], ' amount ', np.sum(sucessfull_bids_log['quantity']))
+
+        print('-- sucessfull_asks taken from market_sim: ', len(sucessfull_asks_pseudo), ', amount ', sucessful_ask_amount_pseudo)
+        print('-- sucessfull_asks taken from market_df: ', sucessfull_asks_log.shape[0], ' amount ', np.sum(sucessfull_asks_log['quantity']))
+
+        # num_sucessfull_settlements = len(sucessfull_settlements)
+        # print(' -- ratio of sucessfull settlements: ', num_sucessfull_settlements / num_attempted_settlements)
+
 
 
 def _check_config(config):
@@ -18,6 +80,8 @@ def _check_config(config):
     if 'start_datetime' not in config['data']['study'].keys():
         print('missing one of the sub^2-keys <start_datetime> or <days>')
 
+# ----------------------------------------------------------------------------------------------------------------------
+# general stuff we need for this to work
 def _get_tables(engine):
     find_profile_names = """
     SELECT table_name
@@ -29,6 +93,19 @@ def _get_tables(engine):
 
     return [element[0] for element in table.values.tolist()] #unpack, because list of lists
 
+def _add_metrics_to_participants(participants_dict):
+    for participant in participants_dict.keys():
+        participant_dict = participants_dict[participant]
+
+        if 'track_metrics' not in participant_dict['trader']:
+            print('no <track_metrics> in participant dict!')
+
+        if participant_dict['trader']['track_metrics'] == True:
+            participants_dict[participant]['metrics'] = extractor.from_metrics(start_gen, sim_type, participant)
+
+    return participants_dict
+# ----------------------------------------------------------------------------------------------------------------------
+# the actual code
 # Get the data
     # acess a simulation database
     # import the profiles of all participants
@@ -50,15 +127,12 @@ max_price = min_price * (1 + exp_config['data']['market']['grid']['fee_ratio'])
 action_space = np.linspace(start=min_price, stop=max_price, num=action_space_separation)
 
 participants_dict = exp_config['data']['participants']
-#ToDo: Do not forget to add the check for each trader if they're learning!
-for participant in participants_dict.keys():
-    participant_dict = participants_dict[participant]
+participants_dict = _add_metrics_to_participants(participants_dict)
 
-    if 'track_metrics' not in participant_dict['trader']:
-        print('no <track_metrics> in participant dict!')
+market_df = extractor.from_market(start_gen, sim_type)
 
-    if participant_dict['trader']['track_metrics'] == True:
-        participants_dict[participant]['metrics'] = extractor.from_metrics(start_gen, sim_type, participant)
+_test_settlement_process(participants_dict, market_df)
+
 
 # participants_dict[participant]['metrics']['actions_dict'] for participant in participants_dict.keys()
 # is a pandas df including a dict tho, so we can assume its ordered
@@ -82,15 +156,11 @@ for participant in participants_dict.keys():
 #         }
 #     }
 # }
-for participant in participants_dict.keys():
-    for timestep in range(len(participants_dict[participant]['metrics']['actions_dict'])):
-        opponents_actions = [participants_dict[opponent]['metrics']['actions_dict'][timestep] for opponent in participants_dict.keys() if opponent != participant]
-        learner_action = participants_dict[participant]['metrics']['actions_dict'][timestep]
 
-        settlement = _get_settlement(opponent_actions_ts=opponents_actions,
-                                     learner_action=learner_action)
 
-        print(settlement)
+
+
+
 
 
 

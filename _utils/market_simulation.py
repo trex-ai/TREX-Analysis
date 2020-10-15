@@ -85,7 +85,7 @@ def _get_settlement(opponent_actions_ts, learner_action):
 
             settle_price = (learner_action['asks'][settle_ts]['price'] + opponent_action['price']) / 2
             settle_qty = min(learner_action['asks'][settle_ts]['quantity'], opponent_action['quantity'])
-            best_settle.append(('asks', settle_qty, settle_price, opponent_action['source']))
+            best_settle.append(('ask', settle_qty, settle_price, opponent_action['source']))
             learner_action['asks'][settle_ts]['quantity'] -= settle_qty
 
     return best_settle
