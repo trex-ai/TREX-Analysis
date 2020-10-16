@@ -15,66 +15,6 @@ from _utils.market_simulation import _get_settlement, match
 # the test is passed if we get the market simulation accuretely represents the market
 # FOR NOW this probably does not account for self-consumption!!!
 
-def _test_settlement_process(participants_dict, market_df):
-    print('checking baseline settlement frequency for all learning agents....')
-
-    ats = {}
-
-    for participant in participants_dict:
-        print(participant, ' :')
-
-        # get stuff from the market df, filter out grid and self-consumption
-        sucessfull_bids_log = market_df[market_df['buyer_id'] == participant]
-        sucessfull_bids_log = sucessfull_bids_log[sucessfull_bids_log['seller_id'] != 'grid']
-        sucessfull_bids_log = sucessfull_bids_log[sucessfull_bids_log['seller_id'] != participant]
-        # sucessfull_bids_log = sucessfull_bids_log[sucessfull_bids_log['energy_source'] == 'solar']
-
-        sucessfull_asks_log = market_df[market_df['seller_id'] == participant]
-        sucessfull_asks_log = sucessfull_asks_log[sucessfull_asks_log['buyer_id'] != 'grid']
-        sucessfull_asks_log = sucessfull_asks_log[sucessfull_asks_log['buyer_id'] != participant]
-        # sucessfull_asks_log = sucessfull_asks_log[sucessfull_asks_log['energy_source'] == 'solar']
-
-
-        # simulated market stuff
-        attempted_settlements = []
-        print(participants_dict[participant]['metrics']['actions_dict'])
-        for timestep in range(len(participants_dict[participant]['metrics']['actions_dict'])):
-            opponents_actions = [participants_dict[opponent]['metrics']['actions_dict'][timestep] for opponent
-                                 in participants_dict.keys() if opponent != participant]
-            attempted_settlements.extend(_get_settlement(opponent_actions_ts=opponents_actions,
-                                                         learner_action=participants_dict[participant]['metrics']['actions_dict'][timestep]))
-
-        # separate into sucessfull bids and asks
-        sucessfull_settlements = [settlement for settlement in attempted_settlements if settlement != []]
-        sucessfull_bids_pseudo = [settlement for settlement in sucessfull_settlements if settlement[0] == 'bid']
-        sucessful_bid_amount_pseudo = 0
-        for settlement in sucessfull_bids_pseudo:
-            sucessful_bid_amount_pseudo += settlement[1]
-
-        sucessfull_asks_pseudo = [settlement for settlement in sucessfull_settlements if settlement[0] == 'ask']
-        sucessful_ask_amount_pseudo = 0
-        for settlement in sucessfull_asks_pseudo:
-            sucessful_ask_amount_pseudo += settlement[1]
-
-        print('checking simulated settlement cycles vs actual settlement cycles:')
-        participant_bids = market_df[market_df['buyer_id'] == participant]
-        participant_bids = participant_bids[participant_bids['seller_id'] != participant]
-        print(len(attempted_settlements), 'vs ', participant_bids.shape[0])
-
-
-
-        print('-- sucessfull_bids taken from market_sim: ', len(sucessfull_bids_pseudo), ', amount ', sucessful_bid_amount_pseudo)
-        print('-- sucessfull_bids taken from market_df: ', sucessfull_bids_log.shape[0], ' amount ', np.sum(sucessfull_bids_log['quantity']))
-
-        print('-- sucessfull_asks taken from market_sim: ', len(sucessfull_asks_pseudo), ', amount ', sucessful_ask_amount_pseudo)
-        print('-- sucessfull_asks taken from market_df: ', sucessfull_asks_log.shape[0], ' amount ', np.sum(sucessfull_asks_log['quantity']))
-
-        # num_sucessfull_settlements = len(sucessfull_settlements)
-        # print(' -- ratio of sucessfull settlements: ', num_sucessfull_settlements / num_attempted_settlements)
-        ats[participant] = attempted_settlements
-    return ats
-
-
 def _check_config(config):
     if 'data' not in config.keys():
         print('missing key <data> in experiment config file')
@@ -85,13 +25,13 @@ def _check_config(config):
     if 'start_datetime' not in config['data']['study'].keys():
         print('missing one of the sub^2-keys <start_datetime> or <days>')
 
-def _test_settlement_process_2(participants:dict, learning_agent_id:str, market_df):
+def _sim_market(participants:dict, learning_agent_id:str):
     learning_agent = participants[learning_agent_id]
     # opponents = copy.deepcopy(participants)
     # opponents.pop(learning_agent_id, None)
     open = {}
     learning_agent_times_delivery = []
-    settlements = []
+    market_sim_df = []
 
     for idx in range(len(learning_agent['metrics']['actions_dict'])):
         for participant_id in participants:
@@ -113,10 +53,65 @@ def _test_settlement_process_2(participants:dict, learning_agent_id:str, market_
 
     for t_d in learning_agent_times_delivery:
         if 'bids' in open[t_d] and 'asks' in open[t_d]:
-            settlements.extend(match(open[t_d]['bids'], open[t_d]['asks'], 'solar', t_d))
+            market_sim_df.extend(match(open[t_d]['bids'], open[t_d]['asks'], 'solar', t_d))
 
-    return settlements
+    return pd.DataFrame(market_sim_df)
 
+def _get_market_records_for_agent(participant:str, market_df):
+    # get stuff from the market df, filter out grid and self-consumption
+    sucessfull_bids_log = market_df[market_df['buyer_id'] == participant]
+    sucessfull_bids_log = sucessfull_bids_log[sucessfull_bids_log['seller_id'] != 'grid']
+    sucessfull_bids_log = sucessfull_bids_log[sucessfull_bids_log['seller_id'] != participant]
+    # sucessfull_bids_log = sucessfull_bids_log[sucessfull_bids_log['energy_source'] == 'solar']
+
+    sucessfull_asks_log = market_df[market_df['seller_id'] == participant]
+    sucessfull_asks_log = sucessfull_asks_log[sucessfull_asks_log['buyer_id'] != 'grid']
+    sucessfull_asks_log = sucessfull_asks_log[sucessfull_asks_log['buyer_id'] != participant]
+    # sucessfull_asks_log = sucessfull_asks_log[sucessfull_asks_log['energy_source'] == 'solar']
+
+    return sucessfull_bids_log, sucessfull_asks_log
+
+def _compare_records(market_sim_df, market_db_df):
+
+    if market_sim_df.shape[0] != market_db_df.shape[0]:
+        print('market dataframe num_entries inconsistent, failed test')
+        return False
+
+    if np.sum(market_sim_df['quantity']) != np.sum(market_db_df['quantity']):
+        print('cumulative quantities not equivalent, failed test')
+        return False
+
+    if market_sim_df.shape[0] and market_db_df.shape[0] != 0:
+        if np.median(market_sim_df['settlement_price']) != np.median(market_db_df['settlement_price']):
+            print('median price not equivalent, failed test')
+            return False
+
+        if np.mean(market_sim_df['settlement_price']) != np.mean(market_db_df['settlement_price']):
+            print('mean price not equivalent, failed test')
+            return False
+
+    print('passed tests')
+    return True
+
+def _test_settlement_process(participants:dict, learning_agent_id:str, market_df):
+
+    market_sim_df = _sim_market(participants, learning_agent_id)
+
+    sim_bids, sim_asks = _get_market_records_for_agent(learning_agent_id, market_sim_df)
+    db_bids, db_asks = _get_market_records_for_agent(learning_agent_id, market_df)
+    print(sim_bids.columns, db_bids.columns)
+    print('testing for bids equivalence')
+    bids_identical = _compare_records(sim_bids, db_bids)
+
+    print('testing for asks equivalence')
+    asks_identical = _compare_records(sim_asks, db_asks)
+
+    if bids_identical and asks_identical:
+        print('passed market equivalence test')
+        return True
+    else:
+        print('failed market equivalence test')
+        return False
 # ----------------------------------------------------------------------------------------------------------------------
 # general stuff we need for this to work
 def _get_tables(engine):
@@ -167,8 +162,8 @@ participants_dict = exp_config['data']['participants']
 participants_dict = _add_metrics_to_participants(participants_dict)
 
 market_df = extractor.from_market(start_gen, sim_type)
-print(participants_dict)
-settlements = _test_settlement_process_2(participants_dict, agent_id, market_df)
+
+_test_settlement_process(participants_dict, agent_id, market_df)
 
 
 # participants_dict[participant]['metrics']['actions_dict'] for participant in participants_dict.keys()
