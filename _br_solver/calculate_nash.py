@@ -6,9 +6,13 @@ from sqlalchemy import create_engine
 import numpy as np
 import copy
 
-from _utils.market_simulation import _get_settlement, match
+from _utils.market_simulation import match
+from _utils.rewards_proxy import Reward
 # import _utils.market_simulation
 
+# Dirty solution to be abe to import from TREX-Core,
+# could be improved with os by walking one up and then adding TREX-Core
+import sys
 # ----------------------------------------------------------------------------------------------------------------------
 # tests
 # test settlement process by attempting to verify what we should also have in the DB
@@ -113,6 +117,36 @@ def _test_settlement_process(participants:dict, learning_agent_id:str, market_df
         print('failed market equivalence test')
         return False
 # ----------------------------------------------------------------------------------------------------------------------
+def _map_market_to_ledger(market_df_ts, learning_agent):
+
+    quantity = market_df_ts['quantity']
+    price = market_df_ts['settlement_price']
+    source = market_df_ts['energy_source']
+    if (market_df_ts['seller_id'] == learning_agent) & (market_df_ts['buyer_id'] != 'grid'):
+        action = 'ask'
+    elif (market_df_ts['buyer_id'] == learning_agent) & (market_df_ts['buyer_id'] != 'grid'):
+        action = 'bid'
+    else:
+        action = None
+    ledger_entry = (action, quantity, price, source)
+    return ledger_entry
+def _test_reward_fun(reward_fun, market_df, learning_agent, grid_transaction_dummy:tuple):
+
+    learning_agent_market_interactions = market_df[(market_df['seller_id'] == learning_agent) & (market_df['buyer_id'] != 'grid') | (market_df['buyer_id'] == learning_agent) & (market_df['seller_id'] != 'grid')]
+
+    market_ledger = []
+    for index in range(learning_agent_market_interactions.shape[0]):
+        timeslice = learning_agent_market_interactions.iloc[index]
+        market_ledger.append(_map_market_to_ledger(timeslice, learning_agent))
+
+    rewards = []
+    for index in range(len(market_ledger)):
+        r = reward_fun.calculate(market_transactions=[market_ledger[index]], grid_transactions=grid_transaction_dummy)
+        rewards.append(r)
+    print(sum(rewards))
+    #ToDo: test this on a sim that uses economic advantage ... ahaha
+    return True
+# ----------------------------------------------------------------------------------------------------------------------
 # general stuff we need for this to work
 def _get_tables(engine):
     find_profile_names = """
@@ -136,6 +170,13 @@ def _add_metrics_to_participants(participants_dict):
             participants_dict[participant]['metrics'] = extractor.from_metrics(start_gen, sim_type, participant)
 
     return participants_dict
+
+# def _fetch_reward_function(participants_dict):
+#     #ToDo: once config has reward type, automatically adjust!
+#     sys.path.insert(0, 'E:/TREX-Core/')
+#     from _agent._rewards.economic_advantage import Reward
+#     reward = Reward()
+#     return reward
 # ----------------------------------------------------------------------------------------------------------------------
 # the actual code
 # Get the data
@@ -154,17 +195,37 @@ extractor = Extractor(db_path1)
 exp_config = extractor.extract_config()
 _check_config(exp_config)
 
+len_sim_steps = 1 + exp_config['data']['study']['days']*24*60
+
 min_price = exp_config['data']['market']['grid']['price']
 max_price = min_price * (1 + exp_config['data']['market']['grid']['fee_ratio'])
+grid_transaction_dummy = (None, min_price, None, max_price)
+Q_matrix = np.zeros(shape=[action_space_separation])
 action_space = np.linspace(start=min_price, stop=max_price, num=action_space_separation)
+
+
 
 participants_dict = exp_config['data']['participants']
 participants_dict = _add_metrics_to_participants(participants_dict)
 
+# Test the core components of the algorithm for consistency with the sim
+# no point in doing all this if its not consistent
 market_df = extractor.from_market(start_gen, sim_type)
-
 _test_settlement_process(participants_dict, agent_id, market_df)
 
+reward_fun = Reward()
+_test_reward_fun(reward_fun, market_df, agent_id, grid_transaction_dummy=grid_transaction_dummy)
+
+# ToDo: add other functionalities than simply bid-price, but lets test with this first!
+t_start = min(market_df['time_creation'])
+t_end = max(market_df['time_creation'])
+timesteps = list(range(t_start, t_end, 60))
+for participant in participants_dict:
+    if 'learning' in participants_dict[participant]['trader']:
+        if participants_dict[participant]['trader']['learning'] == True:
+            for timestep in timesteps:
+                participants_dict[participant]['Q'][timestep]['bid_price'] = [0]*action_space_separation
+                # participants_dict[participant]['Q'][timestep]['ask_price'] = [0] * action_space_separation
 
 # participants_dict[participant]['metrics']['actions_dict'] for participant in participants_dict.keys()
 # is a pandas df including a dict tho, so we can assume its ordered
