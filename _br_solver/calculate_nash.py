@@ -29,15 +29,19 @@ def _check_config(config):
     if 'start_datetime' not in config['data']['study'].keys():
         print('missing one of the sub^2-keys <start_datetime> or <days>')
 
-def _sim_market(participants:dict, learning_agent_id:str):
+def _sim_market(participants:dict, learning_agent_id:str, timestep:int=None):
     learning_agent = participants[learning_agent_id]
     # opponents = copy.deepcopy(participants)
     # opponents.pop(learning_agent_id, None)
     open = {}
     learning_agent_times_delivery = []
     market_sim_df = []
+    if timestep is None:
+        timesteps = range(len(learning_agent['metrics']['actions_dict']))
+    else:
+        timesteps = [timestep]
 
-    for idx in range(len(learning_agent['metrics']['actions_dict'])):
+    for idx in timesteps:
         for participant_id in participants:
             agent_actions = participants[participant_id]['metrics']['actions_dict'][idx]
 
@@ -170,7 +174,105 @@ def _add_metrics_to_participants(participants_dict):
             participants_dict[participant]['metrics'] = extractor.from_metrics(start_gen, sim_type, participant)
 
     return participants_dict
+# ----------------------------------------------------------------------------------------------------------------------
+# Value iteration shit
+def _query_market_get_reward_for_one_tuple(participants_dict, ts, learning_participant):
+    market_df = _sim_market(participants=participants_dict, learning_agent_id=learning_participant, timestep=ts)
 
+    market_ledger = []
+    for index in range(market_df.shape[0]):
+        timeslice = market_df.iloc[index]
+        market_ledger.append(_map_market_to_ledger(timeslice, learning_participant))
+    rewards = []
+    for index in range(len(market_ledger)):
+        rewards.append(reward_fun.calculate(market_transactions=[market_ledger[index]], grid_transactions=grid_transaction_dummy))
+    return sum(rewards)
+
+# sweep over all applicable actions for the learning participant and bootstrap Q
+def _get_bootstrap_Q(participants_dict, ts, learning_participant):
+    # find Q* previous ts
+    Q_max = {}
+    steps = len(participants_dict[learning_participant]['Q']) #gets the max timestamp
+    for action_type in participants_dict[learning_participant]['Q'][ts]:
+        # ask for max ts key first
+        # check if key exists, if not error warning
+        # fetch Q_max
+        if ts +1 == steps:
+            print('hit end')
+            Q_max[action_type] = 0.0
+        else:
+            Q_max[action_type] = max(participants_dict[learning_participant]['Q'][ts+1][action_type])
+
+    return Q_max
+
+def _Q_sweep(participants_dict, ts, learning_participant):
+    Q_bootstrap = _get_bootstrap_Q(participants_dict, ts, learning_participant)
+
+    # ToDo: FOR NOW, we are only doing action-wise
+    # might be better to combine those somehow
+    actions = participants_dict[learning_participant]['Q_space'].keys()
+
+    if ('bid_price' and 'bid_quantity' in actions) & ('ask_price' and 'ask_quantity' not in actions):
+        if participants_dict[learning_participant]['Q_space']['bid_quantity'] is None:
+
+            ns_load = participants_dict[learning_participant]['metrics']['next_settle_load'][ts]
+            ns_gen = participants_dict[learning_participant]['metrics']['next_settle_generation'][ts]
+            ns_net_load = ns_load - ns_gen
+
+            if ns_net_load > 0: # ToDo: check this for consistency
+                if 'bids' not in participants_dict[learning_participant]['metrics']['actions_dict'][ts]:
+                    print('found missing bids, autocomplete not implemented yet')
+                    #ToDo: autocomplete bids if and when necessary
+
+                for idx in range(len(participants_dict[learning_participant]['Q_space']['bid_price'])):
+                    key = list(participants_dict[learning_participant]['metrics']['actions_dict'][ts]['bids'].keys())[0]
+                    bid_price = participants_dict[learning_participant]['Q_space']['bid_price'][idx]
+                    participants_dict[learning_participant]['metrics']['actions_dict'][ts]['bids'][key]['price'] = bid_price
+                    r = _query_market_get_reward_for_one_tuple(participants_dict, ts, learning_participant)
+                    participants_dict[learning_participant]['Q'][ts]['bid_price'][idx] = r + Q_bootstrap['bid_price']
+
+                best_action_index = np.argmax(participants_dict[learning_participant]['Q'][ts]['bid_price'])
+                best_price = participants_dict[learning_participant]['Q_space']['bid_price'][best_action_index]
+                participants_dict[learning_participant]['metrics']['actions_dict'][ts]['bids'][key]['price'] = best_price
+            # ToDo: iterate over all prices
+            pass
+        else:
+            # ToDo: iterate over quantity and price
+            pass
+    elif ('bid_price' and 'bid_quantity' not in actions) & ('ask_price' and 'ask_quantity' in actions):
+        print('asks not implemented yet!')
+        if participants_dict[learning_participant]['Q_space']['bid_quantity'] is None:
+            # ToDo: fetch netload
+            # ToDo: iterate over all prices
+            pass
+        else:
+            # ToDo: iterate over quantity and price
+            pass
+    elif ('bid_price' and 'bid_quantity' in actions) & ('ask_price' and 'ask_quantity' in actions):
+        print('combined asks & bids not implemented yet!')
+
+    return participants_dict
+
+# perform value iteration for one participant
+def _Q_iterate_participant(participants_dict, learning_participant):
+    timesteps = len(participants_dict[learning_participant]['Q'])
+
+    # ToDo: iterate overa all applicable actions
+    # ToDo: modify the actions dict according to greedy policy
+    for ts in range(timesteps):
+        print('ts+')
+        participants_dict = _Q_sweep(participants_dict, ts, learning_participant)
+
+    return participants_dict
+
+# perform value iteration for all participants where applicable one full time
+def _full_Q_iteration(participants_dict):
+    for participant in participants_dict:
+        if 'learning' in participants_dict[participant]['trader']:
+            if participants_dict[participant]['trader']['learning'] == True:
+                participants_dict = _Q_iterate_participant(participants_dict, learning_participant=participant)
+
+    return participants_dict
 # def _fetch_reward_function(participants_dict):
 #     #ToDo: once config has reward type, automatically adjust!
 #     sys.path.insert(0, 'E:/TREX-Core/')
@@ -201,7 +303,6 @@ min_price = exp_config['data']['market']['grid']['price']
 max_price = min_price * (1 + exp_config['data']['market']['grid']['fee_ratio'])
 grid_transaction_dummy = (None, min_price, None, max_price)
 Q_matrix = np.zeros(shape=[action_space_separation])
-action_space = np.linspace(start=min_price, stop=max_price, num=action_space_separation)
 
 
 
@@ -211,7 +312,7 @@ participants_dict = _add_metrics_to_participants(participants_dict)
 # Test the core components of the algorithm for consistency with the sim
 # no point in doing all this if its not consistent
 market_df = extractor.from_market(start_gen, sim_type)
-_test_settlement_process(participants_dict, agent_id, market_df)
+# _test_settlement_process(participants_dict, agent_id, market_df)
 
 reward_fun = Reward()
 _test_reward_fun(reward_fun, market_df, agent_id, grid_transaction_dummy=grid_transaction_dummy)
@@ -223,9 +324,15 @@ timesteps = list(range(t_start, t_end, 60))
 for participant in participants_dict:
     if 'learning' in participants_dict[participant]['trader']:
         if participants_dict[participant]['trader']['learning'] == True:
-            for timestep in timesteps:
-                participants_dict[participant]['Q'][timestep]['bid_price'] = [0]*action_space_separation
-                # participants_dict[participant]['Q'][timestep]['ask_price'] = [0] * action_space_separation
+            participants_dict[participant]['Q_space'] = {}
+            participants_dict[participant]['Q_space']['bid_price'] = np.linspace(start=min_price, stop=max_price, num=action_space_separation)
+            participants_dict[participant]['Q_space']['bid_quantity'] = None
+            Q_dict = {'bid_price': [0]*action_space_separation}
+            participants_dict[participant]['Q']  = []
+            for ts in range(len(timesteps)):
+                participants_dict[participant]['Q'].append(Q_dict)
+
+participants_dict = _full_Q_iteration(participants_dict)
 
 # participants_dict[participant]['metrics']['actions_dict'] for participant in participants_dict.keys()
 # is a pandas df including a dict tho, so we can assume its ordered
