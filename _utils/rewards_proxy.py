@@ -1,3 +1,4 @@
+
 class Reward:
     def __init__(self, timing=None, ledger=None, market_info=None, **kwargs):
         self.__timing = timing
@@ -11,11 +12,11 @@ class Reward:
             dict : settlements
             dict : grid_transactions
         """
+
         asks_qty = sum([t[1] for t in market_transactions if t[0] == 'ask'])
         bids_qty = sum([t[1] for t in market_transactions if t[0] == 'bid'])
         market_profit = sum([t[1] * t[2] for t in market_transactions if t[0] == 'ask'])
         market_cost = sum([t[1] * t[2] for t in market_transactions if t[0] == 'bid'])
-
 
         grid_sell_price = grid_transactions[3]
         grid_buy_price = grid_transactions[1]
