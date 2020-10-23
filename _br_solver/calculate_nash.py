@@ -190,11 +190,12 @@ def _query_market_get_reward_for_one_tuple(participants_dict, ts, learning_parti
     return sum(rewards)
 
 # sweep over all applicable actions for the learning participant and bootstrap Q
-def _get_bootstrap_Q(participants_dict, ts, learning_participant):
+# WE ASSUME BACKWARDS VIT
+def _get_bootstrap_Q(Q_array, learning_participant_dict, ts):
     # find Q* previous ts
     Q_max = {}
-    steps = len(participants_dict[learning_participant]['Q']) #gets the max timestamp
-    for action_type in participants_dict[learning_participant]['Q'][ts]:
+    steps = len(learning_participant_dict['Q']) #gets the max timestamp
+    for action_type in learning_participant_dict['Q'][ts]:
         # ask for max ts key first
         # check if key exists, if not error warning
         # fetch Q_max
@@ -202,13 +203,11 @@ def _get_bootstrap_Q(participants_dict, ts, learning_participant):
             print('hit end')
             Q_max[action_type] = 0.0
         else:
-            Q_max[action_type] = max(participants_dict[learning_participant]['Q'][ts+1][action_type])
+            Q_max[action_type] = max(Q_array[ts+1][action_type])
 
     return Q_max
 
-def _Q_sweep(participants_dict, ts, learning_participant):
-    Q_bootstrap = _get_bootstrap_Q(participants_dict, ts, learning_participant)
-
+def _Q_sweep(participants_dict, ts, learning_participant, bootstrap_Q):
     # ToDo: FOR NOW, we are only doing action-wise
     # might be better to combine those somehow
     actions = participants_dict[learning_participant]['Q_space'].keys()
@@ -234,22 +233,23 @@ def _Q_sweep(participants_dict, ts, learning_participant):
                 participants_dict[learning_participant]['metrics']['actions_dict'][ts]['bids'][key]['price'] = bid_price
                 r = _query_market_get_reward_for_one_tuple(participants_dict, ts, learning_participant)
 
-                bid_Q.append(r + Q_bootstrap['bid_price'])
+                bid_Q.append(r + bootstrap_Q['bid_price'])
 
             return {'bid_price': bid_Q}
 
-    return participants_dict
 
 # perform value iteration for one participant
 def _Q_iterate_participant(participants_dict, learning_participant):
     timesteps = len(participants_dict[learning_participant]['Q'])
+    _dict = participants_dict.copy()
 
     # ToDo: iterate overa all applicable actions
     # ToDo: modify the actions dict according to greedy policy
-    Q_array = []
+    Q_array = [np.nan]*(timesteps)
     for ts in reversed(range(timesteps)):
-        bidQ = _Q_sweep(participants_dict, ts, learning_participant)
-        Q_array.append(bidQ)
+        bootstrap_Q = _get_bootstrap_Q(Q_array, participants_dict[learning_participant], ts)
+        bidQ = _Q_sweep(participants_dict, ts, learning_participant, bootstrap_Q)
+        Q_array[ts] = bidQ
     return Q_array
 
 # u[date greedy strategy based on Q values
@@ -291,8 +291,8 @@ def _full_Q_iteration(participants_dict):
 def _fetch_Qs(participants_dict):
     for participant in participants_dict:
         if 'learning' in participants_dict[participant]['trader']:
+            participants_old_Q = {}
             if participants_dict[participant]['trader']['learning'] == True:
-                participants_old_Q = {}
                 participants_old_Q[participant] = participants_dict[participant]['Q']
 
     return participants_old_Q
@@ -305,20 +305,20 @@ def _add_Q_and_Qspace(participants_dict:dict, timesteps:int=10, prices:tuple=(0,
                 participants_dict[participant]['Q_space']['bid_price'] = np.linspace(start=prices[0], stop=prices[1],
                                                                                      num=action_space_separation)
 
-                Q_dict = {'bid_price': [0] * action_space_separation}
+                Q_dict = {'bid_price': [0.0] * action_space_separation}
                 participants_dict[participant]['Q'] = []
                 for ts in range(len(timesteps)):
                     participants_dict[participant]['Q'].append(Q_dict)
     return participants_dict
 # ----------------------------------------------------------------------------------------------------------------------
 # Metrics stuff for temination
-def Wasserstein(x:list, y:list):
+def calculate_Wasserstein(x:list, y:list):
     x_cumsum = np.cumsum(x)
     y_cumsum = np.cumsum(y)
-    mass_delta = sum(abs(x_cumsum-y_cumsum))
+    mass_delta = np.absolute(np.sum(x_cumsum - y_cumsum, axis=-1))
     return mass_delta
 
-def _calculate_Q_metrics(old_Q, new_Q):
+def _calculate_Q_metrics(old_Q, new_Q, use_wasserstein=True):
     metrics={}
     for participant in old_Q:
         if participant in new_Q:
@@ -326,18 +326,32 @@ def _calculate_Q_metrics(old_Q, new_Q):
 
             for action in old_Q[participant][0]:
                 if action in new_Q[participant][0]:
-                    metrics[participant][action] = []
+                    metrics[participant][action] = {}
+            print('old_Q sum', np.sum([step[action] for step in old_Q[participant]]))
+            print('new_Q sum', np.sum([step[action] for step in new_Q[participant]]))
+            if use_wasserstein:
+                Wasserstein = {}
+                for idx in range(len(old_Q[participant])):
+                    x = old_Q[participant][idx]
+                    y = new_Q[participant][idx]
 
-            for x, y in zip(old_Q[participant], new_Q[participant]):
-                for action in x:
-                    if action in y:
-                        metrics[participant][action].append(Wasserstein(x[action], y[action]))
+                    for action in x:
+                        if action not in Wasserstein:
+                            Wasserstein[action] = []
+                        if action in y:
+                            w = abs(calculate_Wasserstein(x[action], y[action]))
+                            Wasserstein[action].append(w)
+                        # if w != 0:
+                        #     print('x', x)
+                        #     print('y', y)
+                        #     print('w', w)
 
-            for action in metrics[participant]:
-                metrics[participant][action] = sum(metrics[participant][action])
-                print(metrics[participant][action])
+                for action in metrics[participant]:
+                    print(sum(Wasserstein[action]))
+                    metrics[participant][action]['Wasserstein'] = sum(Wasserstein[action])
+    return metrics
 
-def _get_delta_G(participants_dict, old_G=None, reward_fun=None):
+def _calculate_G(participants_dict, reward_fun=None,):
     new_G = {}
     for participant in participants_dict:
         if 'learning' in participants_dict[participant]['trader']:
@@ -346,19 +360,65 @@ def _get_delta_G(participants_dict, old_G=None, reward_fun=None):
                                            reward_fun=reward_fun,
                                            learning_agent=participant,
                                            grid_transaction_dummy=grid_transaction_dummy)
-    print('G:', new_G)
+    return new_G
 
-    if old_G is None:
-        print(new_G)
-        return None, new_G
-    else:
-        delta_G = {}
-        print(new_G, old_G)
-        for participant in new_G:
-            if participant in old_G:
-                delta_G[participant] = new_G[participant] - old_G[participant]
-        print(delta_G)
-        return delta_G, old_G
+def _calculate_G_metrics(new_G=None, old_G=None,  delta_G=True):
+
+    delta_G = {}
+    print(new_G, old_G)
+    for participant in new_G:
+        if participant in old_G:
+            delta_G[participant] = {}
+            if delta_G:
+                delta_G[participant]['delta_G'] = new_G[participant] - old_G[participant]
+    return delta_G
+
+def _merge_metrics(Q_metrics=None, G_metrics=None, pi_metrics=None, metrics_history=None):
+    if not metrics_history:
+        print('starting to aggregate metrics history')
+        metrics_history = {}
+    if Q_metrics:
+        for participant in Q_metrics:
+            if participant not in metrics_history:
+                metrics_history[participant] = {}
+
+            for action in Q_metrics[participant]:
+                if action not in metrics_history[participant]:
+                    metrics_history[participant][action] = {}
+
+                for metric in Q_metrics[participant][action]:
+                    if metric not in metrics_history[participant][action]:
+                        metrics_history[participant][action][metric] = []
+
+                    metrics_history[participant][action][metric].append(Q_metrics[participant][action][metric])
+    if G_metrics:
+        for participant in G_metrics:
+            if participant not in metrics_history:
+                metrics_history[participant] = {}
+
+            for metric in G_metrics[participant]:
+                if metric not in metrics_history[participant]:
+                    metrics_history[participant][metric] = []
+
+                metrics_history[participant][metric].append(G_metrics[participant][metric])
+
+    if pi_metrics:
+        for participant in pi_metrics:
+            if participant not in metrics_history:
+                metrics_history[participant] = {}
+
+            for action in pi_metrics[participant]:
+                if action not in metrics_history[participant]:
+                    metrics_history[participant][action] = {}
+
+                for metric in pi_metrics[participant][action]:
+                    if metric not in metrics_history[participant][action]:
+                        metrics_history[participant][action][metric] = []
+
+                    metrics_history[participant][action][metric].append(pi_metrics[participant][action][metric])
+
+    return metrics_history
+
 # def _fetch_reward_function(participants_dict):
 #     #ToDo: once config has reward type, automatically adjust!
 #     sys.path.insert(0, 'E:/TREX-Core/')
@@ -398,8 +458,8 @@ participants_dict = _add_metrics_to_participants(participants_dict)
 market_df = extractor.from_market(start_gen, sim_type)
 # _test_settlement_process(participants_dict, agent_id, market_df)
 
-reward_fun = Reward()
-_, old_G = _get_delta_G(participants_dict, old_G=None, reward_fun=reward_fun)
+
+
 
 # ToDo: add other functionalities than simply bid-price, but lets test with this first!
 t_start = min(market_df['time_creation'])
@@ -410,13 +470,44 @@ participants_dict = _add_Q_and_Qspace(participants_dict=participants_dict,
                                       prices=(min_price, max_price),
                                       action_space_separation=action_space_separation)
 
-old_Qs = _fetch_Qs(participants_dict)
-participants_dict = _full_Q_iteration(participants_dict)
+reward_fun = Reward()
+new_G = _calculate_G(participants_dict, reward_fun=reward_fun)
 new_Qs = _fetch_Qs(participants_dict)
 
+metrics_history = {}
+summed_delta = np.inf
+summed_wasser = np.inf
 
-_calculate_Q_metrics(old_Q=old_Qs, new_Q=new_Qs)
-delta_G, new_G = _get_delta_G(participants_dict, old_G=old_G, reward_fun=reward_fun)
+while summed_delta > 1e-3 or summed_wasser > 1.0:
+
+    participants_dict = _full_Q_iteration(participants_dict)
+
+    old_Qs = new_Qs
+    old_G = new_G
+    del new_G, new_Qs
+    new_Qs = _fetch_Qs(participants_dict)
+    new_G = _calculate_G(participants_dict, reward_fun)
+
+    metrics_history = _merge_metrics(Q_metrics=_calculate_Q_metrics(old_Q=old_Qs, new_Q=new_Qs),
+                                     G_metrics=_calculate_G_metrics(old_G=old_G, new_G=new_G),
+                                     pi_metrics=None,
+                                     metrics_history=metrics_history)
+
+    summed_delta = 0
+    for participant in metrics_history:
+        summed_delta += abs(metrics_history[participant]['delta_G'][-1])
+
+    summed_wasser = 0
+    for participant in metrics_history:
+        for action in metrics_history[participant]:
+            if action == 'bid_price' or action == 'bid_quantity' or action == 'ask_price' or action == 'ask_quantity':
+                summed_wasser += metrics_history[participant][action]['Wasserstein'][-1]
+
+    print(metrics_history)
+
+
+
+
 
 
 # participants_dict[participant]['metrics']['actions_dict'] for participant in participants_dict.keys()
