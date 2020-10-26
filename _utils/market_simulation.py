@@ -1,10 +1,45 @@
 from operator import itemgetter
+import pandas as pd
 import itertools
 
 # pretend market settlement
-# takes a single time-slice of actions for participants, separated into 'learner' and opponents
-# performs a settlement
-# returns the settlement for the learner
+# simulated market for participants, giving back learning agent's settlements, optionally for a specific timestamp
+def sim_market(participants:dict, learning_agent_id:str, timestep:int=None):
+    learning_agent = participants[learning_agent_id]
+    # opponents = copy.deepcopy(participants)
+    # opponents.pop(learning_agent_id, None)
+    open = {}
+    learning_agent_times_delivery = []
+    market_sim_df = []
+    if timestep is None:
+        timesteps = range(len(learning_agent['metrics']['actions_dict']))
+    else:
+        timesteps = [timestep]
+
+    for idx in timesteps:
+        for participant_id in participants:
+            agent_actions = participants[participant_id]['metrics']['actions_dict'][idx]
+
+            for action in ('bids', 'asks'):
+                if action in agent_actions:
+                    for time_delivery in agent_actions[action]:
+                        if time_delivery not in open:
+                            open[time_delivery] = {}
+                        if action not in open[time_delivery]:
+                            open[time_delivery][action] = []
+
+                        aa = agent_actions[action][time_delivery]
+                        aa['participant_id'] = participant_id
+                        open[time_delivery][action].append(aa)
+                        if participant_id == learning_agent_id:
+                            learning_agent_times_delivery.append(time_delivery)
+
+    for t_d in learning_agent_times_delivery:
+        if 'bids' in open[t_d] and 'asks' in open[t_d]:
+            market_sim_df.extend(match(open[t_d]['bids'], open[t_d]['asks'], 'solar', t_d))
+
+    return pd.DataFrame(market_sim_df)
+
 def match(bids, asks, source_type, time_delivery):
     settled = []
 
