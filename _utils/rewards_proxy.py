@@ -1,5 +1,32 @@
+class NetProfit_Reward:
+    def __init__(self, timing=None, ledger=None, market_info=None, **kwargs):
+        self.__timing = timing
+        self.__ledger = ledger
+        self.__market_info = market_info
 
-class Reward:
+    def calculate(self, last_deliver=None, market_transactions=None, grid_transactions=None, financial_transactions=None):
+        """
+        Parameters:
+            dict : settlements
+            dict : grid_transactions
+        """
+
+        market_cost = sum([t[1] * t[2] for t in market_transactions if t[0] == 'bid'])
+        market_profit = sum([t[1] * t[2] for t in market_transactions if t[0] == 'ask'])
+
+        grid_cost = grid_transactions[0] * grid_transactions[1]
+        grid_profit = grid_transactions[2] * grid_transactions[3]
+
+        financial_cost = financial_transactions[0] if financial_transactions else 0
+        financial_profit = financial_transactions[1] if financial_transactions else 0
+
+        total_profit = market_profit + grid_profit + financial_profit
+        total_cost = market_cost + grid_cost + financial_cost
+        reward = float(total_profit - total_cost)/1000
+
+        return reward
+
+class EconomicAdvantage_Reward:
     def __init__(self, timing=None, ledger=None, market_info=None, **kwargs):
         self.__timing = timing
         self.__ledger = ledger
@@ -18,6 +45,7 @@ class Reward:
         market_profit = sum([t[1] * t[2] for t in market_transactions if t[0] == 'ask'])
         market_cost = sum([t[1] * t[2] for t in market_transactions if t[0] == 'bid'])
 
+
         grid_sell_price = grid_transactions[3]
         grid_buy_price = grid_transactions[1]
 
@@ -33,5 +61,6 @@ class Reward:
         profit_diff =  market_advantage_profit + financial_profit
         cost_diff =  market_advantage_cost + financial_costs
         reward = float(profit_diff - cost_diff)/1000 # divide by 1000 because units so far are $/kWh * wh
+
 
         return reward
