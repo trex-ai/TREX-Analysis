@@ -126,7 +126,7 @@ def get_G(participants_dict, reward_fun, learning_agent, grid_transaction_dummy:
     #ToDo: change the way we index here?
     print(participants_dict[learning_agent]['metrics']['reward'].shape[0])
     for ts in range(participants_dict[learning_agent]['metrics']['reward'].shape[0]):
-        r = _query_market_get_reward_for_one_tuple(participants_dict=participants_dict,
+        r, _ = _query_market_get_reward_for_one_tuple(participants_dict=participants_dict,
                                                    ts=ts,
                                                    learning_participant=learning_agent,
                                                    reward_fun=reward_fun,
@@ -168,9 +168,10 @@ def _add_metrics_to_participants(participants_dict, extractor, start_gen, sim_ty
 def _query_market_get_reward_for_one_tuple(participants_dict, ts, learning_participant, reward_fun, grid_transaction_dummy):
     market_df = sim_market(participants=participants_dict, learning_agent_id=learning_participant, timestep=ts)
     market_ledger = []
+    quant = 0
     for index in range(market_df.shape[0]):
         settlement = market_df.iloc[index]
-        # print(settlement)
+        quant = settlement['quantity']
         market_ledger.append(_map_market_to_ledger(settlement, learning_participant))
 
     grid_transactions = _extract_grid_transactions(market_ledger=market_ledger,
@@ -183,7 +184,7 @@ def _query_market_get_reward_for_one_tuple(participants_dict, ts, learning_parti
     # print('grid', grid_transactions)
     # print('r', rewards)
     # print('metered_r', participants_dict[learning_participant]['metrics']['reward'][ts])
-    return rewards
+    return rewards, quant
 
 # get the bootstrap Q
 def _get_bootstrap_Q(Q_array, learning_participant_dict, ts):
@@ -198,7 +199,7 @@ def _get_bootstrap_Q(Q_array, learning_participant_dict, ts):
             print('hit end')
             Q_max[action_type] = 0.0
         else:
-            Q_max[action_type] = max(Q_array[ts+1][action_type])
+            Q_max[action_type] = np.amax(Q_array[ts+1][action_type])
 
     return Q_max
 
@@ -209,48 +210,58 @@ def _action_sweep(participants_dict, ts, learning_participant, bootstrap_Q, rewa
     # might be better to combine those somehow
     actions = participants_dict[learning_participant]['Q_space'].keys()
 
-
-    ns_load = participants_dict[learning_participant]['metrics']['next_settle_load'][ts]
-    ns_gen = participants_dict[learning_participant]['metrics']['next_settle_generation'][ts]
-    ns_net_load = ns_load - ns_gen
-
-
     if 'bids' not in participants_dict[learning_participant]['metrics']['actions_dict'][ts]:
         print('found missing bids, autocomplete not implemented yet')
-        #ToDo: autocomplete bids if and when necessary
 
     key = list(participants_dict[learning_participant]['metrics']['actions_dict'][ts]['bids'].keys())[0]
 
-
-    bid_price_Q = []
     if 'bid_price' in actions:
-        for idx in range(len(participants_dict[learning_participant]['Q_space']['bid_price'])):
+        bid_Q = []
+        received_quantities = []
+        for price_idx in range(len(participants_dict[learning_participant]['Q_space']['bid_price'])):
 
-            bid_price = participants_dict[learning_participant]['Q_space']['bid_price'][idx]
+            bid_price = participants_dict[learning_participant]['Q_space']['bid_price'][price_idx]
             participants_dict[learning_participant]['metrics']['actions_dict'][ts]['bids'][key]['price'] = bid_price
-            r = _query_market_get_reward_for_one_tuple(participants_dict, ts, learning_participant, reward_fun, grid_transaction_dummy)
-            bid_price_Q.append(r + bootstrap_Q['bid_price'])
 
-    bid_quant_Q = []
-    if 'bid_quantity' in actions:
-        for idx in range(len(participants_dict[learning_participant]['Q_space']['bid_quantity'])):
+            if 'bid_quantity' in actions:
+                quant_Q = []
+                received_quantities_array = []
+                for quant_idx in range(len(participants_dict[learning_participant]['Q_space']['bid_quantity'])):
+                    bid_quant = participants_dict[learning_participant]['Q_space']['bid_quantity'][quant_idx]
+                    participants_dict[learning_participant]['metrics']['actions_dict'][ts]['bids'][key][
+                        'quantity'] = bid_quant
 
-            bid_quant = participants_dict[learning_participant]['Q_space']['bid_quantity'][idx]
-            participants_dict[learning_participant]['metrics']['actions_dict'][ts]['bids'][key]['quantity'] = bid_quant
-            r = _query_market_get_reward_for_one_tuple(participants_dict, ts, learning_participant, reward_fun,
-                                                       grid_transaction_dummy)
-            bid_quant_Q.append(r + bootstrap_Q['bid_quantity'])
+                    r, quant = _query_market_get_reward_for_one_tuple(participants_dict, ts, learning_participant, reward_fun, grid_transaction_dummy)
 
+                    received_quantities_array.append(quant)
+                    quant_Q.append(r + bootstrap_Q['bids'])
 
-    if 'bid_price' in actions and 'bid_quantity' in actions:
-        return {'bid_price': bid_price_Q,
-                'bid_quantity': bid_quant_Q}
+            else: #ToDo maybe do sth here?
+                print('uhoh ... only bid prices not implemented anymore')
 
-    elif 'bid_price' in actions and 'bid_quantity' not in actions:
-        return {'bid_price': bid_price_Q}
+            bid_Q.append(quant_Q)
+            received_quantities.append(received_quantities_array)
+        received_quantities = np.array(received_quantities)
+        bid_Q = np.array(bid_Q)
 
-    elif 'bid_price' not in actions and 'bid_quantity' in actions:
-        return {'bid_quantity': bid_quant_Q}
+        #some testing/verification stuff for the baseline stuffodo:
+        best_a_idx = np.unravel_index(np.argmax(bid_Q), bid_Q.shape)
+        ns_load = participants_dict[learning_participant]['metrics']['next_settle_load'][ts]
+        ns_gen = participants_dict[learning_participant]['metrics']['next_settle_generation'][ts]
+        ns_net_load = ns_load - ns_gen
+
+        if received_quantities[best_a_idx[0], best_a_idx[1]] == np.amax(received_quantities) or received_quantities[best_a_idx[0], best_a_idx[1]] == ns_net_load:
+            best_quant = True
+        else:
+
+            best_p = participants_dict[learning_participant]['Q_space']['bid_price'][best_a_idx[0]]
+            best_q = participants_dict[learning_participant]['Q_space']['bid_quantity'][best_a_idx[1]]
+            print('best possible received quantity: ', np.amax(received_quantities))
+            print('received quantity: ', received_quantities[best_a_idx[0], best_a_idx[1]], 'net load at: ', ns_net_load)
+            print('actions: ', 'price @ ', best_p, '///', 'quant @ ', best_q)
+            best_quant = False
+        if 'bid_price' in actions and 'bid_quantity' in actions:
+            return {'bids': bid_Q}, best_quant
 
 
 # perform Q value iteration for one participant,
@@ -260,10 +271,20 @@ def _Q_iterate_participant(participants_dict, learning_participant, reward_fun, 
     _dict = participants_dict.copy()
 
     Q_array = [np.nan]*(timesteps)
+    counter = 0
+    percent_counter = 0
+    best_quant_percentage = 0
     for ts in reversed(range(timesteps)):
         bootstrap_Q = _get_bootstrap_Q(Q_array, participants_dict[learning_participant], ts)
-        bidQ = _action_sweep(participants_dict, ts, learning_participant, bootstrap_Q, reward_fun, grid_transaction_dummy)
+        bidQ, best_quant = _action_sweep(participants_dict, ts, learning_participant, bootstrap_Q, reward_fun, grid_transaction_dummy)
         Q_array[ts] = bidQ
+        best_quant_percentage += best_quant/timesteps
+        if 100*counter/timesteps > percent_counter:
+            print(percent_counter, '% done')
+            print('best quant percentage: ', best_quant_percentage)
+            percent_counter += 5
+        counter += 1
+
     return Q_array
 
 # update greedy strategy based on Q_values for a learning participant
@@ -281,16 +302,20 @@ def _update_to_new_policy(participants_dict, learning_participant=None):
                 ts_key = list(learner_dict['metrics']['actions_dict'][ts]['bids'].keys())[0]
                 old_policy = old_policy[ts_key]
 
+                best_action_index = np.unravel_index(np.argmax(learner_dict['Q'][ts]['bids']), learner_dict['Q'][ts]['bids'].shape)
 
                 if 'bid_price' in learner_dict['Q_space']:
-                    best_action_index = np.argmax(learner_dict['Q'][ts]['bid_price'])
-                    best_price = learner_dict['Q_space']['bid_price'][best_action_index]
-                    old_policy['price'] = best_price
+                    best_price_index = best_action_index[0]
+                    old_policy['price'] = learner_dict['Q_space']['bid_price'][best_price_index]
 
                 if 'bid_quantity' in learner_dict['Q_space']:
-                    best_action_index = np.argmax(learner_dict['Q'][ts]['bid_quantity'])
-                    best_price = learner_dict['Q_space']['bid_quantity'][best_action_index]
-                    old_policy['quantity'] = best_price
+
+                    if 'bid_price' not in learner_dict['Q_space']:
+                        best_quantity_index = best_action_index[0]
+                    else:
+                        best_quantity_index = best_action_index[1]
+
+                    old_policy['quantity'] = learner_dict['Q_space']['bid_quantity'][best_quantity_index]
 
                 entry[action][ts_key]= old_policy
         new_policy.append(entry)
@@ -341,22 +366,23 @@ def _calculate_G(participants_dict, reward_fun, grid_transaction_dummy):
 # ----------------------------------------------------------------------------------------------------------------------
 # helper functions for setup of value iteration
 # add Q values and Qspace to the participants dictionary
-def _add_Q_and_Qspace(participants_dict:dict, timesteps:int=10, prices:tuple=(0,1), action_space_separation:int=10):
+def _add_Q_and_Qspace(participants_dict:dict, timesteps:int=10, prices:tuple=(0,1), action_space_separation_prices:int=10, action_space_separation_quantity:int=20):
     for participant in participants_dict:
         if 'learning' in participants_dict[participant]['trader']:
             if participants_dict[participant]['trader']['learning'] == True:
+                Q_dict = {}
                 participants_dict[participant]['Q_space'] = {}
                 participants_dict[participant]['Q_space']['bid_price'] = np.linspace(start=prices[0], stop=prices[1],
-                                                                                     num=action_space_separation)
+                                                                                     num=action_space_separation_prices)
 
-                participants_dict[participant]['Q_space']['bid_quantity'] = np.linspace(start=0, stop=10,
-                                                                                     num=action_space_separation)
+                participants_dict[participant]['Q_space']['bid_quantity'] = np.linspace(start=0, stop=action_space_separation_quantity-1,
+                                                                                     num=action_space_separation_quantity, dtype=int)
 
-                Q_dict = {'bid_price': [0.0] * action_space_separation,
-                          'bid_quantity': [0.0] * action_space_separation
-                          }
+                Q_dict['bids'] = np.zeros(shape=[action_space_separation_prices, action_space_separation_quantity])
+
                 participants_dict[participant]['Q'] = []
                 for ts in range(len(timesteps)):
+
                     participants_dict[participant]['Q'].append(Q_dict)
     return participants_dict
 
@@ -378,7 +404,8 @@ def solve_for_nash(sim_db_path='postgresql://postgres:postgres@stargate/remote_a
                     agent_id = 'egauge19821',
                     sim_type = 'training',
                     start_gen = 0,
-                    action_space_separation = 10,
+                    action_space_separation_prices = 10,
+                   action_space_separation_quantity = 30
                    ):
 
     extractor = Extractor(sim_db_path)
@@ -403,7 +430,8 @@ def solve_for_nash(sim_db_path='postgresql://postgres:postgres@stargate/remote_a
     participants_dict = _add_Q_and_Qspace(participants_dict=participants_dict,
                                           timesteps=timesteps,
                                           prices=(min_price, max_price),
-                                          action_space_separation=action_space_separation)
+                                          action_space_separation_prices=action_space_separation_prices,
+                                          action_space_separation_quantity=action_space_separation_quantity)
 
 
     initial_Qs = _fetch_Qs(participants_dict)
@@ -440,7 +468,8 @@ if __name__ == "__main__":
                     agent_id = 'egauge19821',
                     sim_type = 'training',
                     start_gen = 0,
-                    action_space_separation = 10,)
+                    action_space_separation_prices = 10,
+                   action_space_separation_quantity=20)
 
 
 
