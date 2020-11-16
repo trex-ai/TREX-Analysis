@@ -41,7 +41,8 @@ class Storage:
         # Bess_output_kW, Soc_now = battery_function(desired_bess_output, Soc_before)
         projected_energy = max(0, min(self.__info['capacity'], start_energy + energy_activity))
         charge_cap = (self.__info['capacity'] - projected_energy) / self.__info['efficiency']  # at the meter
-        discharge_cap = projected_energy * self.__info['efficiency']  # at the meter
+        discharge_cap = - projected_energy * self.__info['efficiency']  # at the meter
+
         actual_energy_activity = 0
         if energy_activity > 0:
             actual_energy_activity = min(charge_cap, energy_activity)
