@@ -81,15 +81,15 @@ class Solver(object):
             if 'learning' in self.participants_dict[participant]['trader']:
                 if self.participants_dict[participant]['trader']['learning'] == True:
                         rewards = []
-                        for ts in range(self.participants_dict[participant]['metrics']['reward'].shape[0]):
-                            r, _ = self._query_market_get_reward_for_one_tuple(ts=ts, learning_participant=participant)
+                        for row in range(self.participants_dict[participant]['metrics']['reward'].shape[0]):
+                            r, _ = self._query_market_get_reward_for_one_tuple(row=row, learning_participant=participant)
                             rewards.append(r)
                         G[participant] = sum(rewards)
 
         return G
 
-    def _query_market_get_reward_for_one_tuple(self, ts, learning_participant):
-        market_df = sim_market(participants=self.participants_dict, learning_agent_id=learning_participant, timestep=ts)
+    def _query_market_get_reward_for_one_tuple(self, row, learning_participant):
+        market_df = sim_market(participants=self.participants_dict, learning_agent_id=learning_participant, row=row)
         market_ledger = []
         quant = 0
         for index in range(market_df.shape[0]):
@@ -99,17 +99,17 @@ class Solver(object):
 
         # key = list(participants_dict[learning_participant]['metrics']['actions_dict'][ts]['bids'].keys())[0]
         # bat_action = participants_dict[learning_participant]['metrics']['actions_dict'][ts]['battery']
-        if 'battery' in self.participants_dict[learning_participant]['metrics']['actions_dict'][ts]:
-            if ts == 0:
+        if 'battery' in self.participants_dict[learning_participant]['metrics']['actions_dict'][row]:
+            if row == 0:
                 battery_soc_previous = 0
             else:
                 bat_key = \
-                list(self.participants_dict[learning_participant]['metrics']['actions_dict'][ts - 1]['battery'].keys())[
+                list(self.participants_dict[learning_participant]['metrics']['actions_dict'][row - 1]['battery'].keys())[
                     0]
-                battery_soc_previous = self.participants_dict[learning_participant]['metrics']['actions_dict'][ts - 1]['battery'][bat_key]['SoC']
+                battery_soc_previous = self.participants_dict[learning_participant]['metrics']['actions_dict'][row - 1]['battery'][bat_key]['SoC']
             bat_key = \
-            list(self.participants_dict[learning_participant]['metrics']['actions_dict'][ts]['battery'].keys())[0]
-            battery_amt = self.participants_dict[learning_participant]['metrics']['actions_dict'][ts]['battery'][bat_key]['action']
+            list(self.participants_dict[learning_participant]['metrics']['actions_dict'][row]['battery'].keys())[0]
+            battery_amt = self.participants_dict[learning_participant]['metrics']['actions_dict'][row]['battery'][bat_key]['action']
 
             battery_amt, battery_soc_previous = self.EES.simulate_activity(battery_soc_previous,
                                        energy_activity=battery_amt)
@@ -119,7 +119,7 @@ class Solver(object):
 
         grid_transactions = self._extract_grid_transactions(market_ledger=market_ledger,
                                                            learning_participant=learning_participant,
-                                                           ts=ts,
+                                                           ts=row,
                                                            battery=battery_amt)
 
         rewards = self.reward_fun.calculate(market_transactions=market_ledger, grid_transactions=grid_transactions)
@@ -209,8 +209,8 @@ class Solver(object):
     def test_current_policy(self, learner):
         G = 0
         q_max = 0
-        for ts in range(len(self.participants_dict[learner]['metrics'])):
-            r, q = self._query_market_get_reward_for_one_tuple(ts, learner)
+        for row in range(len(self.participants_dict[learner]['metrics'])):
+            r, q = self._query_market_get_reward_for_one_tuple(row, learner)
             G += r
             q_max += q
         return G, q_max
