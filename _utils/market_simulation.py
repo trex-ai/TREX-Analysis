@@ -5,19 +5,19 @@ import itertools
 
 # pretend market settlement
 # simulated market for participants, giving back learning agent's settlements, optionally for a specific timestamp
-def sim_market(participants:dict, learning_agent_id:str, timestep:int=None):
+def sim_market(participants:dict, learning_agent_id:str, row:int=None):
     learning_agent = participants[learning_agent_id]
     # opponents = copy.deepcopy(participants)
     # opponents.pop(learning_agent_id, None)
     open = {}
     learning_agent_times_delivery = []
     market_sim_df = []
-    if timestep is None:
-        timesteps = range(len(learning_agent['metrics']['actions_dict']))
+    if row is None:
+        row = range(len(learning_agent['metrics']['actions_dict']))
     else:
-        timesteps = [timestep]
+        row = [row]
 
-    for idx in timesteps:
+    for idx in row:
         for participant_id in participants:
             agent_actions = participants[participant_id]['metrics']['actions_dict'][idx]
 
@@ -34,7 +34,7 @@ def sim_market(participants:dict, learning_agent_id:str, timestep:int=None):
                         open[time_delivery][action].append(aa)
                         if participant_id == learning_agent_id:
                             learning_agent_times_delivery.append(time_delivery)
-
+    # print(open)
     for t_d in learning_agent_times_delivery:
         if 'bids' in open[t_d] and 'asks' in open[t_d]:
             market_sim_df.extend(match(open[t_d]['bids'], open[t_d]['asks'], 'solar', t_d))
