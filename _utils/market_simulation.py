@@ -12,7 +12,7 @@ def sim_market(participants:dict, learning_agent_id:str, row:int=None):
     open = {}
     learning_agent_times_delivery = []
     market_sim_df = []
-    if row is None:
+    if row == None:
         row = range(len(learning_agent['metrics']['actions_dict']))
     else:
         row = [row]
@@ -20,7 +20,6 @@ def sim_market(participants:dict, learning_agent_id:str, row:int=None):
     for idx in row:
         for participant_id in participants:
             agent_actions = participants[participant_id]['metrics']['actions_dict'][idx]
-
             for action in ('bids', 'asks'):
                 if action in agent_actions:
                     for time_delivery in agent_actions[action]:
