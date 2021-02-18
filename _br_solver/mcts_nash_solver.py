@@ -226,8 +226,17 @@ class Solver(object):
         self.actions = {
             # np.linspace(self.prices_max_min[1], self.prices_max_min[0], action_space[0])
                         'bid_price': [0.1, 0.2],
+            # np.linspace(self.prices_max_min[1], self.prices_max_min[0], action_space[0])
+                        'bid_quantity': [0, 10, 20, 30]
                    }
-        action_space =  np.arange(action_space[0]).tolist()
+        self.shape_action_space = []
+        for action_dimension in self.actions:
+            self.shape_action_space.append(len(self.actions[action_dimension]))
+        num_individual_entries = 1
+
+        for dimension in self.shape_action_space:
+            num_individual_entries = num_individual_entries*dimension
+        action_space =  np.arange(num_individual_entries).tolist()
 
         start = self.participants_dict[self.learner]['metrics']['timestamp'][0] #first state of the cropped data piece
         self.time_end = self.participants_dict[self.learner]['metrics']['timestamp'][len(self.participants_dict[self.learner]['metrics'])-1]
@@ -334,11 +343,12 @@ class Solver(object):
     def decode_actions(self, a, ts):
 
         actions_dict = {}
+        a = np.unravel_index(int(a), self.shape_action_space)
         price = self.actions['bid_price'][a[0]]
-        # quantity = self.actions['quantity'][a[1]]
+        quantity = self.actions['bid_quantity'][a[1]]
         ts = (ts+60, ts+2*60)
         # print(price)
-        actions_dict['bids'] = {str(ts): {'quantity': 20,
+        actions_dict['bids'] = {str(ts): {'quantity': quantity,
                                      'price': price,
                                      'source': 'solar',
                                      'participant_id': self.learner
@@ -419,15 +429,13 @@ class Solver(object):
     def __add_s_next(self, game_tree, s_now, action_space):
         a_next = {}
         for action in action_space:
-            if not isinstance(action, tuple): # this might be dumb!!
-                action = (action, None)
 
             s_next = self._next_states(s_now, action)
             ts, _ = self.decode_states(s_next)
             if s_next not in game_tree and ts < self.time_end:
                 game_tree[s_next] = {'N': 0}
 
-            a_next[action] = {'r': None,
+            a_next[str(action)] = {'r': None,
                               'n': 0,
                               's_next': s_next}
 
@@ -444,8 +452,6 @@ class Solver(object):
         V = 0
         while not finished:
             a = np.random.choice(action_space)
-            if not isinstance(a, tuple):
-                a = (a, None)
             ts, _ = self.decode_states(s_now)
             if ts == self.time_end:
                 finished = True
