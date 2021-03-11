@@ -22,6 +22,7 @@ def sim_market(participants:dict, learning_agent_id:str, row:int=None):
             agent_actions = participants[participant_id]['metrics']['actions_dict'][idx]
             for action in ('bids', 'asks'):
                 if action in agent_actions:
+                    # print(open)
                     for time_delivery in agent_actions[action]:
                         if time_delivery not in open:
                             open[time_delivery] = {}
@@ -104,7 +105,6 @@ def _get_market_records_for_agent(participant:str,
     # sucessfull_asks_log = sucessfull_asks_log[sucessfull_asks_log['energy_source'] == 'solar']
 
     return sucessfull_bids_log, sucessfull_asks_log
-
 def _compare_records(market_sim_df, #compares an extracted market_df to a simulated market_df
                      market_db_df):
 
