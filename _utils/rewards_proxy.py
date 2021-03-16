@@ -10,10 +10,10 @@ class NetProfit_Reward:
             dict : settlements
             dict : grid_transactions
         """
-
         market_cost = sum([t[1] * t[2] for t in market_transactions if t[0] == 'bid'])
         market_profit = sum([t[1] * t[2] for t in market_transactions if t[0] == 'ask'])
 
+        # print(grid_transactions)
         grid_cost = grid_transactions[0] * grid_transactions[1]
         grid_profit = grid_transactions[2] * grid_transactions[3]
 

@@ -2,6 +2,7 @@ from operator import itemgetter
 import pandas as pd
 import numpy as np
 import itertools
+import copy
 
 # pretend market settlement
 # simulated market for participants, giving back learning agent's settlements, optionally for a specific timestamp
@@ -9,6 +10,7 @@ def sim_market(participants:dict, learning_agent_id:str, row:int=None):
     learning_agent = participants[learning_agent_id]
     # opponents = copy.deepcopy(participants)
     # opponents.pop(learning_agent_id, None)
+    # print(learning_agent_id)
     open = {}
     learning_agent_times_delivery = []
     market_sim_df = []
@@ -16,13 +18,15 @@ def sim_market(participants:dict, learning_agent_id:str, row:int=None):
         row = range(len(learning_agent['metrics']['actions_dict']))
     else:
         row = [row]
-
+    # print(row)
     for idx in row:
         for participant_id in participants:
             agent_actions = participants[participant_id]['metrics']['actions_dict'][idx]
+            # print(agent_actions)
             for action in ('bids', 'asks'):
                 if action in agent_actions:
                     for time_delivery in agent_actions[action]:
+                        # print(time_delivery)
                         if time_delivery not in open:
                             open[time_delivery] = {}
                         if action not in open[time_delivery]:
@@ -30,14 +34,16 @@ def sim_market(participants:dict, learning_agent_id:str, row:int=None):
 
                         aa = agent_actions[action][time_delivery]
                         aa['participant_id'] = participant_id
-                        open[time_delivery][action].append(aa)
+                        open[time_delivery][action].append(copy.deepcopy(aa))
                         if participant_id == learning_agent_id:
                             learning_agent_times_delivery.append(time_delivery)
-    # print(open)
+
     for t_d in learning_agent_times_delivery:
+        # print(open[t_d])
         if 'bids' in open[t_d] and 'asks' in open[t_d]:
             market_sim_df.extend(match(open[t_d]['bids'], open[t_d]['asks'], 'solar', t_d))
 
+    # print(market_sim_df)
     return pd.DataFrame(market_sim_df)
 
 def match(bids, asks, source_type, time_delivery):
@@ -63,6 +69,9 @@ def match(bids, asks, source_type, time_delivery):
         settle_record = settle(bid, ask, time_delivery)
         if settle_record:
             settled.append(settle_record)
+
+            bid['quantity'] -= settle_record['quantity']
+            ask['quantity'] -= settle_record['quantity']
 
     return settled
 
@@ -154,16 +163,30 @@ def _test_settlement_process(participants_dict:dict,    #the imported metrics fr
 # ----------------------------------------------------------------------------------------------------------------------
 # all the stuff we need to calculate returns
 def _map_market_to_ledger(market_df_ts, # one timemslice of the market dataframe
-                          learning_agent):
+                          learning_agent,
+                          do_print=False):
+
 
     quantity = market_df_ts['quantity']
-    price = market_df_ts['settlement_price']
     source = market_df_ts['energy_source']
-    if (market_df_ts['seller_id'] == learning_agent) & (market_df_ts['buyer_id'] != 'grid'):
-        action = 'ask'
-    elif (market_df_ts['buyer_id'] == learning_agent) & (market_df_ts['buyer_id'] != 'grid'):
-        action = 'bid'
+
+    if market_df_ts['seller_id'] == learning_agent or market_df_ts['buyer_id'] == learning_agent:
+
+        if (market_df_ts['seller_id'] == learning_agent) & (market_df_ts['buyer_id'] != 'grid'):
+            action = 'ask'
+            price = market_df_ts['settlement_price_sell']
+
+        elif (market_df_ts['buyer_id'] == learning_agent) & (market_df_ts['seller_id'] != 'grid'):
+            action = 'bid'
+            price = market_df_ts['settlement_price_buy']
+
+        else:
+            action = None
+
+        ledger_entry = (action, quantity, price, source)
     else:
-        action = None
-    ledger_entry = (action, quantity, price, source)
+        ledger_entry = None
+
+    # if do_print:
+    #     print(ledger_entry)
     return ledger_entry

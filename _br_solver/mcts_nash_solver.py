@@ -6,10 +6,12 @@ import numpy as np
 import copy
 import itertools
 import copy
-from _utils.market_simulation import sim_market, _test_settlement_process, _map_market_to_ledger
-from _utils.rewards_proxy import NetProfit_Reward as Reward
+from _utils.market_simulation_3 import sim_market, _test_settlement_process, _map_market_to_ledger
+from _utils.rewards_proxy import EconomicAdvantage_Reward as Reward
 from _utils.metrics import Metrics_manager
 from _utils.Bess import Storage
+
+import matplotlib.pyplot as plt
 # ----------------------------------------------------------------------------------------------------------------------
 def _add_metrics_to_participants(participants_dict, extractor, start_gen, sim_type):
     for participant in participants_dict.keys():
@@ -36,7 +38,7 @@ class Solver(object):
                  sim_type='training',
                  start_gen=0,
                  test_scenario='test_buy_fixed', #None, 'test_buy_fixed', 'test_buy_variable'
-                 test_length = 5,
+                 test_length = 10,
                  test_participants = 4,
                  ):
 
@@ -97,35 +99,39 @@ class Solver(object):
         return G
 
     def _query_market_get_reward_for_one_tuple(self, row, learning_participant, do_print=False):
+
         market_df = sim_market(participants=self.participants_dict, learning_agent_id=learning_participant, row=row)
+
         market_ledger = []
         quant = 0
         for index in range(market_df.shape[0]):
             settlement = market_df.iloc[index]
             quant = settlement['quantity']
-            market_ledger.append(_map_market_to_ledger(settlement, learning_participant))
-        if do_print:
-            print(quant)
+            entry = _map_market_to_ledger(settlement, learning_participant, do_print)
+            if entry is not None:
+                market_ledger.append(entry)
+        # if do_print:
+        #     print('row:', row)
+        #     print(settlement)
 
         # key = list(participants_dict[learning_participant]['metrics']['actions_dict'][ts]['bids'].keys())[0]
         # bat_action = participants_dict[learning_participant]['metrics']['actions_dict'][ts]['battery']
-        if 'battery' in self.participants_dict[learning_participant]['metrics']['actions_dict'][row]:
-            if row == 0:
-                battery_soc_previous = 0
-            else:
-                bat_key = \
-                list(self.participants_dict[learning_participant]['metrics']['actions_dict'][row - 1]['battery'].keys())[
-                    0]
-                battery_soc_previous = self.participants_dict[learning_participant]['metrics']['actions_dict'][row - 1]['battery'][bat_key]['SoC']
-            bat_key = \
-            list(self.participants_dict[learning_participant]['metrics']['actions_dict'][row]['battery'].keys())[0]
-            battery_amt = self.participants_dict[learning_participant]['metrics']['actions_dict'][row]['battery'][bat_key]['action']
+        battery_amt = 0
+        # if 'battery' in self.participants_dict[learning_participant]['metrics']['actions_dict'][row]:
+        #     if row == 0:
+        #         battery_soc_previous = 0
+        #     else:
+        #         bat_key = \
+        #         list(self.participants_dict[learning_participant]['metrics']['actions_dict'][row - 1]['battery'].keys())[
+        #             0]
+        #         battery_soc_previous = self.participants_dict[learning_participant]['metrics']['actions_dict'][row - 1]['battery'][bat_key]['SoC']
+        #     bat_key = \
+        #     list(self.participants_dict[learning_participant]['metrics']['actions_dict'][row]['battery'].keys())[0]
+        #     battery_amt = self.participants_dict[learning_participant]['metrics']['actions_dict'][row]['battery'][bat_key]['action']
+        #
+        #     battery_amt, battery_soc_previous = self.EES.simulate_activity(battery_soc_previous,
+        #                                energy_activity=battery_amt)
 
-            battery_amt, battery_soc_previous = self.EES.simulate_activity(battery_soc_previous,
-                                       energy_activity=battery_amt)
-
-        else:
-            battery_amt = 0
 
         grid_transactions = self._extract_grid_transactions(market_ledger=market_ledger,
                                                            learning_participant=learning_participant,
@@ -143,8 +149,12 @@ class Solver(object):
         sucessfull_bids = sum([sett[1] for sett in market_ledger if sett[0] == 'bid'])
         sucessfull_asks = sum([sett[1] for sett in market_ledger if sett[0] == 'ask'])
 
-        net_influx = self.participants_dict[learning_participant]['metrics']['next_settle_generation'][ts] + sucessfull_bids
-        net_outflux = self.participants_dict[learning_participant]['metrics']['next_settle_load'][ts] + sucessfull_asks
+        net_influx = self.participants_dict[learning_participant]['metrics']['next_settle_generation'][ts] - sucessfull_asks
+        net_outflux = self.participants_dict[learning_participant]['metrics']['next_settle_load'][ts] - sucessfull_bids
+
+        # print(market_ledger)
+        # print('net influx:', net_influx, 'for generation', self.participants_dict[learning_participant]['metrics']['next_settle_generation'][ts], 'and asks', sucessfull_asks)
+        # print('net outflux:', net_outflux, 'for load', self.participants_dict[learning_participant]['metrics']['next_settle_load'][ts], 'and bids', sucessfull_bids)
 
         grid_load = net_outflux - net_influx + battery
 
@@ -165,7 +175,7 @@ class Solver(object):
                 new_participant_dict = copy.deepcopy(self.participants_dict[template_participant])
                 self.participants_dict[new_participant]  = new_participant_dict
 
-        test_participants = list(self.participants_dict.keys())
+
         for participant in self.participants_dict:
 
             self.participants_dict[participant]['trader']['learning'] = True
@@ -192,21 +202,23 @@ class Solver(object):
             if index < num_participants/2:
             # set up a seller
             # set buyer /learner load to always exced generatiion by 20
-                self.participants_dict[participants[index]]['metrics']['next_settle_load'] = [40]*test_length
-                self.participants_dict[participants[index]]['metrics']['next_settle_generation'] = [20]*test_length
+                print(participants[index], 'is forced into bids')
+                self.participants_dict[participants[index]]['metrics']['next_settle_load'] = [20]*test_length
+                self.participants_dict[participants[index]]['metrics']['next_settle_generation'] = [0]*test_length
 
                 self._set_up_initial_actions(participants[index],
                                              action_type='bids',
-                                             scenario='fixed')
+                                             scenario='variable')
 
             else:
 
-                self.participants_dict[participants[index]]['metrics']['next_settle_load'] = [20]*test_length
-                self.participants_dict[participants[index]]['metrics']['next_settle_generation'] = [40]*test_length
+                print(participants[index], 'is forced into asks')
+                self.participants_dict[participants[index]]['metrics']['next_settle_load'] = [0]*test_length
+                self.participants_dict[participants[index]]['metrics']['next_settle_generation'] = [20]*test_length
 
                 self._set_up_initial_actions(participants[index],
                                              action_type='asks',
-                                             scenario='fixed')
+                                             scenario='variable')
 
     def _set_up_initial_actions(self,
                                 participant,
@@ -253,8 +265,10 @@ class Solver(object):
         G = 0
         quant_cum = 0
         #
-        for row in range(len(self.participants_dict[learner]['metrics'])):
-            r, quant = self._query_market_get_reward_for_one_tuple(row, learner)
+        for row in range(len(self.participants_dict[learner]['metrics']['actions_dict'])):
+
+            r, quant = self._query_market_get_reward_for_one_tuple(row, learner, True)
+
             G += r
             quant_cum += quant
         if do_print:
@@ -269,8 +283,13 @@ class Solver(object):
         # print('ubc factor is', c)
         return c
 
-    def MA_MCTS(self, epochs = 8, max_it_per_epoch=2000, action_space = [5,5], c_adjustment=0.1):
+    def MA_MCTS(self, epochs = 10, max_it_per_epoch=5000, action_space = [10,10], c_adjustment=1):
         log = {}
+
+        game_trees = {}
+        s_0s = {}
+        action_spaces = {}
+
         for participant in self.participants_dict:
             log[participant] = {'G': [],
                                 'quant': []}
@@ -278,15 +297,46 @@ class Solver(object):
         for epoch in range(epochs):
             for participant in self.participants_dict:
                 print('MCTS epoch', epoch, 'for', participant)
-                G_participant, quant, _ = self.MCTS(max_it_per_epoch, action_space, c_adjustment, learner=participant)
+                game_trees[participant], s_0s[participant], action_spaces[participant] = self.MCTS(max_it_per_epoch, action_space, c_adjustment, learner=participant)
                 # print('Return is now', G_participant)
-                log[participant]['G'].append(G_participant)
-                log[participant]['quant'].append(quant)
-            # print(log)
+
+            log = self._update_policies_and_evaluate(game_trees, s_0s, action_spaces, log)
+
+        self._plot_log(log)
 
         return log
 
-    def MCTS(self, max_it=200, action_space=[5, 5], c_adjustment=1, learner=None):
+    def SA_MCTS(self, max_it_per_epoch=1000, action_space = [5,1], c_adjustment=1):
+        log = {}
+
+
+        game_tree, s_0, action_space = self.MCTS(max_it_per_epoch, action_space, c_adjustment)
+        # print('Return is now', G_participant)
+
+        self._update_policy_from_tree(self.learner, game_tree, s_0, action_space)
+        for action in self.participants_dict[self.learner]['metrics']['actions_dict']:
+            print(action['bids'])
+        self.test_current_policy(learner=self.learner, do_print=True)
+
+        self._plot_log(log)
+
+        return log
+
+    def _plot_log(self, log):
+
+        plt.figure()
+        plt.grid(True)
+        plt.title('MCTS 1:1 demand:supply return')
+        plt.xlabel('MCTS epochs')
+        plt.ylabel('Return')
+
+        for participant in log:
+            plt.plot(log[participant]['G'], label= participant)
+
+        plt.legend()
+        plt.show()
+
+    def MCTS(self, max_it=500, action_space=[5, 1], c_adjustment=1, learner=None):
     # here's where the MCTS comes in
     # We need to define an action space for every time step
         if learner is None:
@@ -297,7 +347,8 @@ class Solver(object):
             #
                         'price': np.linspace(self.prices_max_min[1], self.prices_max_min[0], action_space[0]),
             #
-                        'quantity': np.linspace(0, 30, action_space[1])
+                        'quantity': [20],
+            # np.linspace(0, 30, action_space[1])
                    }
         self.shape_action_space = []
         for action_dimension in self.actions:
@@ -311,7 +362,7 @@ class Solver(object):
         self.c_ucb = self._estimate_c_ubc(self.learner, num_individual_entries, c_adjustment)
 
         start = self.participants_dict[self.learner]['metrics']['timestamp'][0] #first state of the cropped data piece
-        self.time_end = self.participants_dict[self.learner]['metrics']['timestamp'][len(self.participants_dict[self.learner]['metrics'])-1]
+        self.time_end = max(self.participants_dict[self.learner]['metrics']['timestamp'])
         s_0 = self.encode_states(start)
         game_tree = {}
         game_tree[s_0] = {'N': 0}
@@ -334,17 +385,30 @@ class Solver(object):
             game_tree = self._one_MCT_rollout_and_backup(game_tree, s_0, action_space)
             it += 1
 
-        # establish the best policy and test
-        self._update_policy_from_tree(self.learner, game_tree, s_0, action_space)
-        G, quant = self.test_current_policy(learner=self.learner, do_print=True)
+        return game_tree, s_0, action_space
 
-        return G, quant, game_tree
+    def _update_policies_and_evaluate(self, game_trees, s_0s, action_spaces, measurment_dict):
 
-    def _update_policy_from_tree(self, participants, game_tree, s_0, action_space):
+        for participant in self.participants_dict:
+            # establish the best policy and test
+            game_tree = game_trees[participant]
+            s_0 = s_0s[participant]
+            action_space = action_spaces[participant]
+            self._update_policy_from_tree(participant, game_tree, s_0, action_space)
+
+        for participant in self.participants_dict:
+            G, quant = self.test_current_policy(learner=participant, do_print=True)
+            measurment_dict[participant]['G'].append(G)
+            measurment_dict[participant]['quant'].append(quant)
+
+        return measurment_dict
+
+    def _update_policy_from_tree(self, participant, game_tree, s_0, action_space):
         # the idea is to follow a greedy policy from S_0 as long as we can and then switch over to the default rollout policy
         finished = False
         s_now = s_0
         while not finished:
+
             if s_now in game_tree:
                 if 'a' in game_tree[s_now]: #meaning we know the Q values, --> pick greedily
                     actions = list(game_tree[s_now]['a'].keys())
@@ -356,6 +420,8 @@ class Solver(object):
                             r = -np.inf
                         s_next = game_tree[s_now]['a'][a]['s_next']
                         ts, _ = self.decode_states(s_next)
+                        if ts > self.time_end:
+                            finished = True
                         if ts >= self.time_end:
                             V = 0
                         else:
@@ -365,7 +431,6 @@ class Solver(object):
                     index = np.random.choice(np.where(Q == np.max(Q))[0])
                     a_state = actions[index]
 
-
                 else: #well, use the rollout policy then
                     _, s_next, a_state, finished = self.one_default_step(s_now, action_space=action_space)
 
@@ -374,14 +439,18 @@ class Solver(object):
 
             timestamp, _ = self.decode_states(s_now)
             s_now = s_next
-            if not finished:
-                row = self.participants_dict[self.learner]['metrics'].index[
-                    self.participants_dict[self.learner]['metrics']['timestamp'] == timestamp]
+
+            if timestamp <= self.time_end:
+
+                row = self.participants_dict[participant]['metrics'].index[
+                    self.participants_dict[participant]['metrics']['timestamp'] == timestamp]
                 row = row[0]
                 bid_or_ask = [action for action in
-                              self.participants_dict[self.learner]['metrics'].at[row, 'actions_dict']]
-                actions = self.decode_actions(a, timestamp, bid_or_ask[0])
-                self.participants_dict[self.learner]['metrics'].at[row, 'actions_dict'] = actions
+                              self.participants_dict[participant]['metrics'].at[row, 'actions_dict']]
+                actions = self.decode_actions(a_state, timestamp, bid_or_ask[0], do_print=True)
+
+                self.participants_dict[participant]['metrics'].at[row, 'actions_dict'] = actions
+
 
     def _one_MCT_rollout_and_backup(self, game_tree, s_0, action_space):
         s_now = s_0
@@ -430,7 +499,7 @@ class Solver(object):
         timestamp = s[0]
         return timestamp, None
 
-    def decode_actions(self, a, ts, bid_or_ask):
+    def decode_actions(self, a, ts, bid_or_ask, do_print=False):
 
         actions_dict = {}
         a = np.unravel_index(int(a), self.shape_action_space)
@@ -485,6 +554,9 @@ class Solver(object):
         #     return game_tree, None, True
         #
         # else: # we want to identify all followup states
+        # ts, _ = self.decode_states(s_now)
+        # if ts == self.time_end:
+            # print('final time')
         if 'a' not in game_tree[s_now]:
             game_tree = self.__add_s_next(game_tree, s_now, action_space)
 
@@ -499,7 +571,7 @@ class Solver(object):
 
 
             ts, _ = self.decode_states(s_next)
-            if ts < self.time_end:
+            if ts <= self.time_end:
                 game_tree[s_next]['V'] = self.default_rollout(s_next, action_space)
 
             return game_tree, None, True
@@ -507,11 +579,13 @@ class Solver(object):
 
             r, s_next = self.evaluate_transition(s_now, a)
 
-            game_tree[s_now]['a'][a]['r'] = (game_tree[s_now]['a'][a]['n']*game_tree[s_now]['a'][a]['r'] + r)/(game_tree[s_now]['a'][a]['n']+1)
+            game_tree[s_now]['a'][a]['r'] = r
+                # ToDo: make this workk with a rolling average, calculation sth like (game_tree[s_now]['a'][a]['n']*game_tree[s_now]['a'][a]['r'] + r)/(game_tree[s_now]['a'][a]['n']+1)
             game_tree[s_now]['a'][a]['s_next'] = s_next
             game_tree[s_now]['a'][a]['n'] +=1
             game_tree[s_now]['N'] += 1
-            if s_next[0] >= self.time_end:
+            ts_now, _ = self.decode_states(s_now)
+            if ts_now >= self.time_end:
                 finished = True
 
             return game_tree, s_next, finished
@@ -522,12 +596,13 @@ class Solver(object):
 
             s_next = self._next_states(s_now, action)
             ts, _ = self.decode_states(s_next)
-            if s_next not in game_tree and ts < self.time_end:
+            if s_next not in game_tree and ts <= self.time_end:
                 game_tree[s_next] = {'N': 0}
 
             a_next[str(action)] = {'r': None,
                               'n': 0,
                               's_next': s_next}
+
 
         game_tree[s_now]['a'] = a_next
 
@@ -541,13 +616,10 @@ class Solver(object):
         finished = False
         a = np.random.choice(action_space)
         ts, _ = self.decode_states(s_now)
+        r, s_next = self.evaluate_transition(s_now, a)
         if ts == self.time_end:
             finished = True
-            r = 0
-            s_next = None
-            a = None
-        else:
-            r, s_next = self.evaluate_transition(s_now, a)
+
         return r, s_next, a, finished
 
 
