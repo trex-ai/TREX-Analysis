@@ -1,3 +1,5 @@
+import numpy as np
+
 class NetProfit_Reward:
     def __init__(self, timing=None, ledger=None, market_info=None, **kwargs):
         self.__timing = timing
@@ -13,7 +15,6 @@ class NetProfit_Reward:
         market_cost = sum([t[1] * t[2] for t in market_transactions if t[0] == 'bid'])
         market_profit = sum([t[1] * t[2] for t in market_transactions if t[0] == 'ask'])
 
-        # print(grid_transactions)
         grid_cost = grid_transactions[0] * grid_transactions[1]
         grid_profit = grid_transactions[2] * grid_transactions[3]
 
@@ -24,7 +25,14 @@ class NetProfit_Reward:
         total_cost = market_cost + grid_cost + financial_cost
         reward = float(total_profit - total_cost)/1000
 
-        return reward
+        bid_quant = sum([t[1] for t in market_transactions if t[0] == 'bid'])
+        ask_quant = sum([t[1] for t in market_transactions if t[0] == 'ask'])
+        cost_quant = bid_quant + grid_transactions[0]
+        profit_quant = ask_quant + grid_transactions[2]
+        avg_price_sell = total_profit/ask_quant if ask_quant > 0 else np.nan
+        avg_price_buy = total_cost/bid_quant if bid_quant > 0 else np.nan
+
+        return reward, {'avg_ask_price': avg_price_sell, 'avg_bid_price': avg_price_buy}
 
 class EconomicAdvantage_Reward:
     def __init__(self, timing=None, ledger=None, market_info=None, **kwargs):
