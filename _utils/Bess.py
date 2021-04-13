@@ -29,36 +29,35 @@ class Storage:
 
     """
 
-    def __init__(self, capacity=7000, power=3300, efficiency=0.95):
+    def __init__(self, capacity=7000, power=3300):
+        # assume perfect efficiency
         self.__info = {
             'capacity': capacity,  # Wh
-            'efficiency': efficiency,  # charges less than meter readings, and discharges more than meter readings
+            # 'efficiency': efficiency,  # charges less than meter readings, and discharges more than meter readings
             'power_rating': power,  # reading at the meter in W
         }
 
     # Collect status of battery charge at start and end of turn/ current scheduled battery charge or discharge
-    def simulate_activity(self, start_SoC, target_energy_activity=0):
-        start_SoC = max(0, min(start_SoC, 100))
-        # Bess_output_kW, Soc_now = battery_function(desired_bess_output, Soc_before)
-        charge_cap, discharge_cap = self.get_discharge_charge_cap(start_SoC, target_energy_activity)
+    def simulate_activity(self, start_energy:int, target_energy=0, duration_s=60):
+        storage_capacity = self.__info['capacity']
+        start_energy = max(0, min(start_energy, storage_capacity))
+        duration_h = duration_s / 3600
+        target_power = target_energy / duration_h
 
-        if target_energy_activity > 0:
-            actual_energy_activity = min(charge_cap, target_energy_activity)
+        if target_energy > 0:
+            actual_power = min(target_power, self.__info['power_rating'])
+            actual_energy_max = int(actual_power * duration_h)
+            actual_energy_capped = min(actual_energy_max, storage_capacity - start_energy)
+            end_energy = start_energy + actual_energy_capped
+            return actual_energy_capped, end_energy
+        elif target_energy < 0:
+            actual_power = max(target_power, -self.__info['power_rating'])
+            actual_energy_max = int(actual_power * duration_h)
+            actual_energy_capped = max(-start_energy, actual_energy_max)
+            end_energy = start_energy + actual_energy_capped
+            return actual_energy_capped, end_energy
         else:
-            actual_energy_activity = max(discharge_cap, target_energy_activity)
-
-        end_SoC = start_SoC + (actual_energy_activity*100)/self.__info['capacity']
-        return actual_energy_activity, max(0, min(end_SoC, 100))
-
-    def get_discharge_charge_cap(self, start_SoC, energy_activity=0):
-        projected_energy = max(0, min(self.__info['capacity'], (start_SoC/100)*self.__info['capacity'] + energy_activity))
-        discharge_cap = -(self.__info['capacity'] - projected_energy) * self.__info['efficiency']  # at the meter
-        charge_cap = projected_energy / self.__info['efficiency']  # at the meter
-        return charge_cap, discharge_cap
+            return 0, start_energy
 
     def get_info(self):
         return self.__info
-
-    def reset(self, soc_pct):
-        state_of_charge = int(self.__info['capacity'] * max(0, min(100, soc_pct/100)))
-        self.__info['state_of_charge'] = state_of_charge
