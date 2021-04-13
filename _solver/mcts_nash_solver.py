@@ -49,7 +49,7 @@ class Solver(object):
                  sim_db_path='postgresql://postgres:postgres@stargate/remote_agent_test_np',
                  sim_type='training',
                  start_gen=0, # the generation we import the game-tree from, shouldn't make a difference but might be useful down the line
-                 test_scenario='variable', #None, 'test_buy_fixed', 'test_buy_variable'
+                 test_scenario='fixed', #None, 'variable', 'fixed', 'battery'
                  test_length = 5, #in steps
                  test_participants = 8,
                  ):
@@ -129,60 +129,68 @@ class Solver(object):
         participants = list(self.participants_dict.keys())
         num_participants = len(participants)
 
-        if test_scenario == 'fixed':
-            load = 20
-            gen = 20
-        elif test_scenario == 'variable':
-            load = np.random.choice([5, 10, 15, 20])
-            gen = np.random.choice([5, 10, 15, 20])
-        elif test_scenario == 'battery-idiot':  # set up one player temporal shift check
-            load = []
-            gen = []
-            for ts in range(test_length):
-                if ts < test_length / 2:  # first we have over generation
-                    gen.append(20)
-                    load.append(0)
-                else:  # then we have under generation
-                    gen.append(0)
-                    load.append(20)
-        else:
-            print('undefined test scenario, expect error')
-        if num_participants == 1: # we're in a single-agent test case as in for example the battery-idiot test
+        for index in range(num_participants):
 
-            self.participants_dict[participants[0]]['metrics']['next_settle_load'] = load
-            self.participants_dict[participants[0]]['metrics']['next_settle_generation'] = gen
 
-            # ToDO: set up the initial actions here, basically just offset generation with battery
+            if test_scenario == 'fixed':
+                # set up half of the participants as sources, half as sinks
+                load = [20]*test_length if index < num_participants/2 else [0]*test_length
+                gen = [20]*test_length if index >= num_participants/2 else [0]*test_length
 
-        else: #we're in a multi player case as for example the PV test
-            for index in range(num_participants):
                 if index < num_participants/2:
-                # set up a seller
-                # set buyer /learner load to always exced generatiion by 20
-                    print(participants[index], 'is forced into bids')
-
-                    self.participants_dict[participants[index]]['metrics']['next_settle_load'] = [load]*test_length
-                    self.participants_dict[participants[index]]['metrics']['next_settle_generation'] = [0]*test_length
-
                     self._set_up_initial_actions(participants[index],
                                                  action_type='bids',
                                                  scenario='fixed')
-
                 else:
-
-                    print(participants[index], 'is forced into asks')
-                    self.participants_dict[participants[index]]['metrics']['next_settle_load'] = [0]*test_length
-                    self.participants_dict[participants[index]]['metrics']['next_settle_generation'] = [gen]*test_length
-
                     self._set_up_initial_actions(participants[index],
                                                  action_type='asks',
                                                  scenario='fixed')
+
+            elif test_scenario == 'variable':
+                load = []
+                gen = []
+                for i in range(test_length):
+                    load_ts = np.random.choice([5, 10, 15, 20])
+                    load.append(load_ts)
+                    gen_ts = np.random.choice([5, 10, 15, 20])
+                    gen.append(gen_ts)
+
+                if index < num_participants/2:
+                    self._set_up_initial_actions(participants[index],
+                                                 action_type='bids',
+                                                 scenario='variable')
+                else:
+                    self._set_up_initial_actions(participants[index],
+                                                 action_type='asks',
+                                                 scenario='variable')
+
+            elif test_scenario == 'battery':  # set up one player temporal shift check
+                load = []
+                gen = []
+                for ts in range(test_length):
+                    if ts < test_length / 2:  # first we have over generation
+                        gen.append(20)
+                        load.append(0)
+                    else:  # then we have under generation
+                        gen.append(0)
+                        load.append(20)
+
+                self._set_up_initial_actions(participants[index],
+                                             action_type='asks',
+                                             scenario=test_scenario)
+
+
+
+            self.participants_dict[participants[index]]['metrics']['next_settle_load'] = load
+            self.participants_dict[participants[index]]['metrics']['next_settle_generation'] = gen
+
+
 
     # change actions to match desired test
     def _set_up_initial_actions(self,
                                 participant,
                                 action_type='bids', # 'asks',
-                                scenario='fixed', #or test_buy_variable
+                                scenario='fixed', #or 'variable'
                                 ):
 
         # generate arbitrary timestamps for settlements / actions dict:
