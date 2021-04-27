@@ -60,10 +60,10 @@ class Extractor():
 
         return json.loads(json.dumps(data[0]))
 
-agent_id = 'egauge19821'
-db_path1 = 'postgresql://postgres:postgres@stargate/remote_agent_test_np'
-sim_type = 'training'
-extractor = Extractor(db_path1)
-dataframe = extractor.from_metrics(0, sim_type, agent_id)
+# agent_id = 'egauge19821'
+# db_path1 = 'postgresql://postgres:postgres@stargate/remote_agent_test_np'
+# sim_type = 'training'
+# extractor = Extractor(db_path1)
+# dataframe = extractor.from_metrics(0, sim_type, agent_id)
 
 # print(dataframe.head())

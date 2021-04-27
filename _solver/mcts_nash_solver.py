@@ -46,7 +46,7 @@ def _add_metrics_to_participants(participants_dict, extractor, start_gen, sim_ty
 
 class Solver(object):
     def __init__(self,
-                 sim_db_path='postgresql://postgres:postgres@stargate/remote_agent_test_np',
+                 sim_db_path='postgresql://postgres:postgres@localhost/ae2021-ute3-qbandit-anneal-lr-exp-5s-5d',
                  sim_type='training',
                  start_gen=0, # the generation we import the game-tree from, shouldn't make a difference but might be useful down the line
                  test_scenario='battery', #None, 'variable', 'fixed', 'battery'
