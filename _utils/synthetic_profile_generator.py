@@ -1,4 +1,5 @@
 import math
+from scipy import signal
 import numpy as np
 from datetime import datetime
 import pytz
@@ -17,10 +18,10 @@ def timestr_to_timestamp(time_string:str, timezone:str):
 def ts_and_duration(start_datetime_str, end_datetime_str, timezone):
     start_datetime = pytz.timezone(timezone).localize(timeparse(start_datetime_str))
     end_datetime = pytz.timezone(timezone).localize(timeparse(end_datetime_str))
-    start_timestamp = start_datetime.timestamp()
-    end_timestamp = end_datetime.timestamp()
+    start_timestamp = int(start_datetime.timestamp())
+    end_timestamp = int(end_datetime.timestamp())
     duration_minutes = int((end_timestamp - start_timestamp) / 60)
-    timestamps = np.linspace(start_timestamp, end_timestamp, duration_minutes)
+    timestamps = tuple(range(start_timestamp, end_timestamp, 60))
     return timestamps, duration_minutes
 
 def generate_flat_profile(start_datetime_str, end_datetime_str, timezone, peak_power):
@@ -41,8 +42,27 @@ def generate_cosine_profile(start_datetime_str, end_datetime_str, timezone, peak
     # timestamps = np.linspace(start_timestamp, end_timestamp, duration_minutes)
 
     timestamps, duration_minutes = ts_and_duration(start_datetime_str, end_datetime_str, timezone)
-    x = np.linspace(0, duration_minutes, duration_minutes)
+    x = np.linspace(0, duration_minutes, duration_minutes, endpoint=False)
     power_profile = (peak_power/2) * np.cos((2 * np.pi/1440) * (x + time_offset)) + (peak_power/2)
+    energy_profile = (60/3600) * power_profile
+    return timestamps, energy_profile
+
+
+def generate_square_profile(start_datetime_str, end_datetime_str, timezone, peak_power, time_offset=0):
+    # peak power in Watts
+    # time_offset in minutes, defaults to 0
+    # start_datetime = pytz.timezone(timezone).localize(timeparse(start_datetime_str))
+    # end_datetime = pytz.timezone(timezone).localize(timeparse(end_datetime_str))
+    # start_timestamp = start_datetime.timestamp()
+    # end_timestamp = end_datetime.timestamp()
+    # duration_minutes = int((end_timestamp - start_timestamp) / 60)
+    # timestamps = np.linspace(start_timestamp, end_timestamp, duration_minutes)
+    # https://docs.scipy.org/doc/scipy/reference/generated/scipy.signal.square.html
+
+    timestamps, duration_minutes = ts_and_duration(start_datetime_str, end_datetime_str, timezone)
+    x = np.linspace(0, duration_minutes, duration_minutes, endpoint=False)
+    # power_profile = (peak_power/2) * np.cos((2 * np.pi/1440) * (x + time_offset)) + (peak_power/2)
+    power_profile = peak_power * signal.square(2 * np.pi / 1440 * (x + time_offset))
     energy_profile = (60/3600) * power_profile
     return timestamps, energy_profile
 
@@ -62,14 +82,15 @@ start_time = '2000-01-01 0:0:0'
 end_time = '2030-01-01 0:0:0'
 timezone = 'America/Vancouver'
 # time_offset = 0
-time_offset = int(1440/2)
+# time_offset = int(1440/2)
 # timestamps, energy_profile = generate_cosine_profile(start_time, end_time, timezone, 1000, time_offset=int(1440/2))
-timestamps, energy_profile = generate_flat_profile(start_time, end_time, timezone, 1000)
-
+# timestamps, energy_profile = generate_flat_profile(start_time, end_time, timezone, 1000)
+timestamps, energy_profile = generate_square_profile(start_time, end_time, timezone, 1000)
+plt.plot(timestamps, energy_profile)
+plt.show()
 write_to_db(timestamps, energy_profile,
             'postgresql://postgres:postgres@localhost/profiles',
-            'test_profile_1kw_flat')
+            'test_profile_1kw_square')
 
-# plt.plot(timestamps, energy_profile)
-# plt.show()
+
 
