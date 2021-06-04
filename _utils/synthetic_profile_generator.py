@@ -67,14 +67,13 @@ def generate_square_profile(start_datetime_str, end_datetime_str, timezone, peak
     return timestamps, energy_profile
 
 def write_to_db(timestamps, energy_profile, db_str:str, profile_name:str):
-    energy_profile_generation = np.array([0 if i < 0 else i for i in energy_profile])
-    energy_profile_load = np.array([0 if i > 0 else -i for i in energy_profile])
-
+    energy_profile_grid = [i if i > 0 else i for i in energy_profile]
+    energy_profile_solar = [0 if i > 0 else -i for i in energy_profile]
     profile = [{
         'tstamp': int(timestamps[idx]),
-        'grid': energy_profile_load[idx],
+        'grid': energy_profile_grid[idx],
         # 'solar': energy_profile_generation[idx],
-        'solar+': energy_profile_generation[idx]
+        'solar+': energy_profile_solar[idx]
         } for idx in range(len(timestamps))]
 
     db = dataset.connect(db_str)
@@ -88,15 +87,13 @@ def write_to_db(timestamps, energy_profile, db_str:str, profile_name:str):
     db[profile_name].insert_many(profile)
 
 start_time = '2010-01-01 0:0:0'
-end_time = '2030-01-01 0:0:0'
+end_time = '2010-01-02 0:0:0'
 timezone = 'America/Vancouver'
 # time_offset = 0
 # time_offset = int(1440/2)
 # timestamps, energy_profile = generate_cosine_profile(start_time, end_time, timezone, 1000, time_offset=int(1440/2))
 # timestamps, energy_profile = generate_flat_profile(start_time, end_time, timezone, 1000)
 timestamps, energy_profile = generate_square_profile(start_time, end_time, timezone, 1000)
-# energy_profile_generation = [0 if i < 0 else i for i in energy_profile]
-# energy_profile_load = [0 if i > 0 else -i for i in energy_profile]
 # plt.plot(timestamps, energy_profile)
 # plt.show()
 write_to_db(timestamps, energy_profile,
