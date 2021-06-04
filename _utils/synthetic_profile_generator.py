@@ -58,6 +58,7 @@ def generate_square_profile(start_datetime_str, end_datetime_str, timezone, peak
     # duration_minutes = int((end_timestamp - start_timestamp) / 60)
     # timestamps = np.linspace(start_timestamp, end_timestamp, duration_minutes)
     # https://docs.scipy.org/doc/scipy/reference/generated/scipy.signal.square.html
+    # +ve=load, -ve=generation
 
     timestamps, duration_minutes = ts_and_duration(start_datetime_str, end_datetime_str, timezone)
     x = np.linspace(0, duration_minutes, duration_minutes, endpoint=False)
@@ -67,8 +68,8 @@ def generate_square_profile(start_datetime_str, end_datetime_str, timezone, peak
     return timestamps, energy_profile
 
 def write_to_db(timestamps, energy_profile, db_str:str, profile_name:str):
-    energy_profile_grid = [i if i > 0 else i for i in energy_profile]
-    energy_profile_solar = [0 if i > 0 else -i for i in energy_profile]
+    energy_profile_grid = np.array([i if i > 0 else i for i in energy_profile])
+    energy_profile_solar = np.array([0 if i > 0 else -i for i in energy_profile])
     profile = [{
         'tstamp': int(timestamps[idx]),
         'grid': energy_profile_grid[idx],
@@ -78,16 +79,10 @@ def write_to_db(timestamps, energy_profile, db_str:str, profile_name:str):
 
     db = dataset.connect(db_str)
     db.create_table(profile_name, primary_id='tstamp')
-
-    # table = db[profile_name]
-    # table.create_column('tstamp', db.types.)
-    # table.create_column('grid', db.types.float)
-    # table.create_column('solar+', db.types.float)
-
     db[profile_name].insert_many(profile)
 
 start_time = '2010-01-01 0:0:0'
-end_time = '2010-01-02 0:0:0'
+end_time = '2030-01-01 0:0:0'
 timezone = 'America/Vancouver'
 # time_offset = 0
 # time_offset = int(1440/2)
