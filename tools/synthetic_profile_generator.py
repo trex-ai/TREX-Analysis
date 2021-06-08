@@ -48,7 +48,7 @@ def generate_cosine_profile(start_datetime_str, end_datetime_str, timezone, peak
     return timestamps, energy_profile
 
 
-def generate_square_profile(start_datetime_str, end_datetime_str, timezone, peak_power, time_offset=0):
+def generate_square_profile(start_datetime_str, end_datetime_str, timezone, peak_power, period=1440, time_offset=0):
     # peak power in Watts
     # time_offset in minutes, defaults to 0
     # start_datetime = pytz.timezone(timezone).localize(timeparse(start_datetime_str))
@@ -63,7 +63,7 @@ def generate_square_profile(start_datetime_str, end_datetime_str, timezone, peak
     timestamps, duration_minutes = ts_and_duration(start_datetime_str, end_datetime_str, timezone)
     x = np.linspace(0, duration_minutes, duration_minutes, endpoint=False)
     # power_profile = (peak_power/2) * np.cos((2 * np.pi/1440) * (x + time_offset)) + (peak_power/2)
-    power_profile = peak_power * signal.square(2 * np.pi / 1440 * (x + time_offset))
+    power_profile = peak_power * signal.square(2 * np.pi / period * (x + time_offset))
     energy_profile = (60/3600) * power_profile
     return timestamps, energy_profile
 
@@ -88,12 +88,12 @@ timezone = 'America/Vancouver'
 # time_offset = int(1440/2)
 # timestamps, energy_profile = generate_cosine_profile(start_time, end_time, timezone, 1000, time_offset=int(1440/2))
 # timestamps, energy_profile = generate_flat_profile(start_time, end_time, timezone, 1000)
-timestamps, energy_profile = generate_square_profile(start_time, end_time, timezone, 1000, int(1440/2))
+timestamps, energy_profile = generate_square_profile(start_time, end_time, timezone, 1000, int(14), int(14/2))
 # plt.plot(timestamps, energy_profile)
 # plt.show()
 write_to_db(timestamps, energy_profile,
             'postgresql://postgres:postgres@localhost/profiles',
-            'test_profile_1kw_square+720')
+            'test_profile_1kw_square+p14+7')
 
 
 
