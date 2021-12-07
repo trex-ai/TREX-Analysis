@@ -64,7 +64,7 @@ def generate_square_profile(start_datetime_str, end_datetime_str, timezone, peak
     x = np.linspace(0, duration_minutes, duration_minutes, endpoint=False)
     
     half_period = int(period/2)
-    power_profile_one = list(np.repeat([0, 1], half_period))
+    power_profile_one = list(np.repeat([-1, 1], half_period))
     power_profile = power_profile_one * int(duration_minutes/len(power_profile_one))
     
     # power_profile = (peak_power/2) * np.cos((2 * np.pi/1440) * (x + time_offset)) + (peak_power/2)
