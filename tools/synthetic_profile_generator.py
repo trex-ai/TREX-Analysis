@@ -48,7 +48,7 @@ def generate_cosine_profile(start_datetime_str, end_datetime_str, timezone, peak
     return timestamps, energy_profile
 
 
-def generate_square_profile(start_datetime_str, end_datetime_str, timezone, peak_power, period=1440, time_offset=0):
+def generate_square_profile(start_datetime_str, end_datetime_str, timezone, peak_power, period:int=1440, time_offset:int=0):
     # peak power in Watts
     # time_offset in minutes, defaults to 0
     # start_datetime = pytz.timezone(timezone).localize(timeparse(start_datetime_str))
@@ -62,9 +62,16 @@ def generate_square_profile(start_datetime_str, end_datetime_str, timezone, peak
 
     timestamps, duration_minutes = ts_and_duration(start_datetime_str, end_datetime_str, timezone)
     x = np.linspace(0, duration_minutes, duration_minutes, endpoint=False)
+    
+    half_period = int(period/2)
+    power_profile_one = list(np.repeat([-1, 1], half_period))
+    power_profile = power_profile_one * int(duration_minutes/len(power_profile_one))
+    
     # power_profile = (peak_power/2) * np.cos((2 * np.pi/1440) * (x + time_offset)) + (peak_power/2)
-    power_profile = peak_power * signal.square(2 * np.pi / period * (x + time_offset))
-    energy_profile = (60/3600) * power_profile
+    # power_profile = peak_power * signal.square(2 * np.pi / period * (x + time_offset))
+    energy_profile = peak_power * (60/3600) * np.array(power_profile)
+    if time_offset:
+        energy_profile = np.roll(energy_profile, time_offset)
     return timestamps, energy_profile
 
 def write_to_db(timestamps, energy_profile, db_str:str, profile_name:str):
