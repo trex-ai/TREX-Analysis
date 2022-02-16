@@ -81,9 +81,11 @@ def write_to_db(timestamps, energy_profile, db_str:str, profile_name:str):
         'tstamp': int(timestamps[idx]),
         'grid': energy_profile_grid[idx],
         # 'solar': energy_profile_generation[idx],
-        'solar+': energy_profile_solar[idx]
+        'solar+': energy_profile_solar[idx],
+        'generation': max(energy_profile_grid[idx], 0.0),
+        'consumption': -min(energy_profile_grid[idx], 0.0)
         } for idx in range(len(timestamps))]
-
+    # return profile
     db = dataset.connect(db_str)
     db.create_table(profile_name, primary_id='tstamp')
     db[profile_name].insert_many(profile)
@@ -96,6 +98,9 @@ timezone = 'America/Vancouver'
 # timestamps, energy_profile = generate_cosine_profile(start_time, end_time, timezone, 1000, time_offset=int(1440/2))
 # timestamps, energy_profile = generate_flat_profile(start_time, end_time, timezone, 1000)
 timestamps, energy_profile = generate_square_profile(start_time, end_time, timezone, 1000, int(2), int(2/2))
+# profile = write_to_db(timestamps, energy_profile,
+#             'postgresql://postgres:postgres@localhost/profiles',
+#             'test_profile_1kw_square_p2+1')
 # plt.plot(timestamps, energy_profile)
 # plt.show()
 write_to_db(timestamps, energy_profile,
