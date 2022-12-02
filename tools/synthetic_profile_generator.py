@@ -78,17 +78,17 @@ def write_to_db(timestamps, energy_profile, db_str:str, profile_name:str):
     energy_profile_grid = np.array([i if i > 0 else i for i in energy_profile])
     energy_profile_solar = np.array([0 if i > 0 else -i for i in energy_profile])
     profile = [{
-        'tstamp': int(timestamps[idx]),
-        'grid': energy_profile_grid[idx],
+        'time': int(timestamps[idx]),
+        # 'grid': float(energy_profile_grid[idx]),
         # 'solar': energy_profile_generation[idx],
-        'solar+': energy_profile_solar[idx],
-        'generation': max(energy_profile_grid[idx], 0.0),
-        'consumption': -min(energy_profile_grid[idx], 0.0)
+        # 'solar+': float(energy_profile_solar[idx]),
+        'generation': float(max(energy_profile_grid[idx], 0.0)),
+        'consumption': float(-min(energy_profile_grid[idx], 0.0))
         } for idx in range(len(timestamps))]
     # return profile
     db = dataset.connect(db_str)
-    db.create_table(profile_name, primary_id='tstamp')
-    db[profile_name].insert_many(profile)
+    db.create_table(profile_name, primary_id='time')
+    db[profile_name].upsert_many(profile, list(profile[0].keys()))
 
 start_time = '2010-01-01 0:0:0'
 end_time = '2030-01-01 0:0:0'
@@ -101,11 +101,11 @@ timestamps, energy_profile = generate_square_profile(start_time, end_time, timez
 # profile = write_to_db(timestamps, energy_profile,
 #             'postgresql://postgres:postgres@localhost/profiles',
 #             'test_profile_1kw_square_p2+1')
-# plt.plot(timestamps, energy_profile)
-# plt.show()
+plt.plot(timestamps, energy_profile)
+plt.show()
 write_to_db(timestamps, energy_profile,
-            'postgresql://postgres:postgres@localhost/profiles',
-            'test_profile_1kw_square_p2+1')
-
+            'postgresql://postgres:postgres@stargate/profiles',
+            'test_profile_1kw_constant')
+print('done')
 
 
