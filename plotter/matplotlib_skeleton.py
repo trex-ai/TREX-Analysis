@@ -17,7 +17,7 @@ spinecolor = rex_orange #change to darkblue if too aggressive
 default_font_size = 13
 # ToDo: implement T.rex AI fonts
 
-def finish_plot(fig, ax, title, darkmode=True, transparent=True, disable_axes_ticks=False):
+def finish_plot(fig, title, darkmode=True, transparent=True, disable_axes_ticks=False):
     if transparent:
         plt.gcf().patch.set_facecolor('none')
     elif not transparent and darkmode:
@@ -110,7 +110,7 @@ def multiline_plot(title, data: dict(), darkmode=False, transparent=True, disabl
     ax.set_xlabel(x_label)
     ax.set_ylabel(y_label)
 
-    finish_plot(fig, ax, title, darkmode=darkmode, transparent=transparent, disable_axes_ticks=disable_axes_ticks)
+    finish_plot(fig, title, darkmode=darkmode, transparent=transparent, disable_axes_ticks=disable_axes_ticks)
 
 def multi_plot(title, data: dict(), num_rows='auto', num_columns='auto', darkmode=False, transparent=True, disable_axes_ticks=False):
     # this function will take a dict of data and plot it as a multiplot
@@ -159,7 +159,7 @@ def multi_plot(title, data: dict(), num_rows='auto', num_columns='auto', darkmod
         ax.set_xlabel(vector_dict['x_label'])
 
 
-    finish_plot(fig, ax, title, darkmode=darkmode, transparent=transparent, disable_axes_ticks=disable_axes_ticks)
+    finish_plot(fig, title, darkmode=darkmode, transparent=transparent, disable_axes_ticks=disable_axes_ticks)
 
 def histogram(title, data, bins=None, darkmode=False, transparent=True, disable_axes_ticks=False):
     # this function will take a list of data and plot it as a histogram
@@ -193,7 +193,7 @@ def histogram(title, data, bins=None, darkmode=False, transparent=True, disable_
     for vector_name, vector_dict in data.items():
         ax.hist(vector_dict['y'], label=vector_name, bins=bins, alpha=alpha)
 
-    finish_plot(fig, ax, title, darkmode=darkmode, transparent=transparent, disable_axes_ticks=disable_axes_ticks)
+    finish_plot(fig, title, darkmode=darkmode, transparent=transparent, disable_axes_ticks=disable_axes_ticks)
 if __name__ == '__main__':
     # make a list of random numbers so we can test the histogram
     histogram_data1 = np.random.uniform(-3, 3, 1000).tolist()
