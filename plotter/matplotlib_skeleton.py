@@ -8,40 +8,65 @@
 import matplotlib.pyplot as plt
 import numpy as np
 
+# use company colors as default
+rex_orange = '#fa6140'
+offwhite = '#fffdef'
+darkblue = '#1a363d'
+spinecolor = rex_orange #change to darkblue if too aggressive
 
+default_font_size = 13
+# ToDo: implement T.rex AI fonts
 
-def finish_plot(fig, ax, title, darkmode=True, transparent=True):
+def finish_plot(fig, ax, title, darkmode=True, transparent=True, disable_axes_ticks=False):
     if transparent:
         plt.gcf().patch.set_facecolor('none')
     elif not transparent and darkmode:
         plt.gcf().patch.set_facecolor('black')
     axes = plt.gcf().get_axes()
-    fontcolor = 'white' if darkmode else 'black'
+    fontcolor = offwhite if darkmode else darkblue
 
     fig.set_size_inches(5, 5)
+
+    # set the title, if we have multiple axes then we will have to set the title for the center plot in the top column
+    fig.suptitle(title, fontsize=default_font_size, color=fontcolor)
+
     for ax in axes:
-        if transparent:
-            ax.set_facecolor('none')
-        elif not transparent and darkmode:
-            ax.set_facecolor('black')
-        ax.spines['bottom'].set_color(fontcolor)
-        ax.spines['top'].set_color(fontcolor)
-        ax.spines['right'].set_color(fontcolor)
-        ax.spines['left'].set_color(fontcolor)
+
+        if disable_axes_ticks:
+            # # hide x, y axis
+            ax.set_xticks([])
+            ax.set_yticks([])
+
+        ax.spines['bottom'].set_color(rex_orange)
+        ax.spines['top'].set_color('none')
+        ax.spines['right'].set_color('none')
+        ax.spines['left'].set_color(rex_orange)
         ax.title.set_color(fontcolor)
         ax.xaxis.label.set_color(fontcolor)
         ax.yaxis.label.set_color(fontcolor)
-        ax.tick_params(axis='x', colors=fontcolor)
-        ax.tick_params(axis='y', colors=fontcolor)
-        ax.title.set_color(fontcolor)
-        # set the legend box to have no facecolor and white font color
-        ax.legend(facecolor='none', edgecolor='none', labelcolor=fontcolor, loc='best')
+        ax.tick_params(axis='x', colors=rex_orange)
+
+
+
+        if transparent:
+            plt.gcf().patch.set_facecolor('none')
+            axes = plt.gcf().get_axes()
+
+            for ax in axes:
+                ax.set_facecolor('none')
+                ax.tick_params(axis='y', colors=rex_orange)
+                ax.title.set_color(rex_orange)
+                # set the legend box to have no facecolor and white font color
+                ax.legend(facecolor='none', edgecolor='none', labelcolor=fontcolor, loc='upper left')
+        else:
+            # should be automatic
+            ax.legend(facecolor='white', edgecolor='none', labelcolor=fontcolor, loc='upper left')
 
 
 
     plt.savefig(title + 'darkmode' if darkmode else title + '.png', dpi=300, facecolor=fig.get_facecolor(), edgecolor='none')
     plt.show()
-def multiline_plot(title, data: dict(), darkmode=False, transparent=True):
+def multiline_plot(title, data: dict(), darkmode=False, transparent=True, disable_axes_ticks=False):
     # this function will take a list of data and plot it as a multiline plot
     # title is the title of the plot
     # x_axis_title is the title of the x axis
@@ -50,10 +75,28 @@ def multiline_plot(title, data: dict(), darkmode=False, transparent=True):
     # data is a dictionary, and expected to have the following format:
         # data = {'vector_name': vector_dict, 'vector_name2': vector_dict, ...}
         # where vector_dict is a dictionary with the following format:
-            # vector_dict = {'x': x_data, 'y': y_data}
+            # vector_dict = {'x': x_data, 'y': y_data, 'y_label': y_label, 'x_label': x_label}
     # if x is not provided, we will assume that the x axis is the index of the vector
 
-    plt.rcParams.update({'font.size': 13})
+    plt.rcParams.update({'font.size': default_font_size})
+
+    for vector_name, vector_dict in data.items():
+        if 'y_label' not in vector_dict:
+            vector_dict['y_label'] = vector_name
+        if 'x_label' not in vector_dict:
+            vector_dict['x_label'] = 'Steps'
+
+    #figure out if our labels are the same:
+    y_labels = [vector_dict['y_label'] for vector_dict in data.values()]
+    if len(set(y_labels)) > 1:
+        print('conflicting y labels, defaulting to: ', y_labels[0])
+    y_label = y_labels[0]
+
+    x_labels = [vector_dict['x_label'] for vector_dict in data.values()]
+    if len(set(x_labels)) > 1:
+        print('conflicting x labels, defaulting to: ', x_labels[0])
+    x_label = x_labels[0]
+
 
     fig, ax = plt.subplots()
     for vector_name, vector_dict in data.items():
@@ -61,11 +104,64 @@ def multiline_plot(title, data: dict(), darkmode=False, transparent=True):
         if 'x' not in vector_dict:
             vector_dict['x'] = list(range(len(vector_dict['y'])))
 
+
         ax.plot(vector_dict['x'], vector_dict['y'], label=vector_name)
 
-    finish_plot(fig, ax, title, darkmode=darkmode, transparent=transparent)
+    ax.set_xlabel(x_label)
+    ax.set_ylabel(y_label)
 
-def histogram(title, data, bins=None, darkmode=False, transparent=True):
+    finish_plot(fig, ax, title, darkmode=darkmode, transparent=transparent, disable_axes_ticks=disable_axes_ticks)
+
+def multi_plot(title, data: dict(), num_rows='auto', num_columns='auto', darkmode=False, transparent=True, disable_axes_ticks=False):
+    # this function will take a dict of data and plot it as a multiplot
+    # title is the title of the plot
+    # x_axis_title is the title of the x axis
+    # y_axis_title is the title of the y axis
+
+    # data is a dictionary, and expected to have the following format:
+        # data = {'vector_name': vector_dict, 'vector_name2': vector_dict, ...}
+        # where vector_dict is a dictionary with the following format:
+            # vector_dict = {'x': x_data, 'y': y_data, 'y_label': y_label, 'x_label': x_label}
+    # if x is not provided, we will assume that the x axis is the index of the vector
+
+    # num_rows and num_columns are the number of rows and columns to use in the plot
+    # if not provided, it will be calculated automatically to ensure even distribution
+
+    plt.rcParams.update({'font.size': default_font_size})
+
+    if num_rows == 'auto' and num_columns == 'auto':
+        # calculate the number of rows and columns to use
+        num_plots = len(data)
+        num_rows = int(np.sqrt(num_plots))
+        num_columns = int(np.ceil(num_plots / num_rows))
+    elif num_rows == 'auto':
+        num_rows = int(np.ceil(len(data) / num_columns))
+    elif num_columns == 'auto':
+        num_columns = int(np.ceil(len(data) / num_rows))
+    else: # both are provided, make sure they fit the data
+        assert num_rows * num_columns >= len(data), 'num_rows * num_columns must be greater than or equal to the number of plots'
+
+    fig, axs = plt.subplots(num_rows, num_columns)
+    for vector_name, vector_dict in data.items():
+        # check if x is provided
+        if 'x' not in vector_dict:
+            vector_dict['x'] = list(range(len(vector_dict['y'])))
+
+        if 'y_label' not in vector_dict:
+            vector_dict['y_label'] = vector_name
+        if 'x_label' not in vector_dict:
+            vector_dict['x_label'] = 'Steps'
+
+        # get the current axis
+        ax = axs.flatten()[list(data.keys()).index(vector_name)]
+        ax.plot(vector_dict['x'], vector_dict['y'], label=vector_name)
+        ax.set_ylabel(vector_dict['y_label'])
+        ax.set_xlabel(vector_dict['x_label'])
+
+
+    finish_plot(fig, ax, title, darkmode=darkmode, transparent=transparent, disable_axes_ticks=disable_axes_ticks)
+
+def histogram(title, data, bins=None, darkmode=False, transparent=True, disable_axes_ticks=False):
     # this function will take a list of data and plot it as a histogram
     # title is the title of the plot
     # data is a dictionary, and expected to have the following format:
@@ -75,7 +171,7 @@ def histogram(title, data, bins=None, darkmode=False, transparent=True):
         # due to histogram format x data is not needed - it can be provided but will not be used
     # bins is the number of bins to use in the histogram, if not provided, it will be calculated automatically by combining all vectors to ensure even distribution
 
-    plt.rcParams.update({'font.size': 13})
+    plt.rcParams.update({'font.size': default_font_size})
 
     if bins is None:
         # first combine all the data into a vector and make a histogram to autodetermine the number of bins
@@ -97,7 +193,7 @@ def histogram(title, data, bins=None, darkmode=False, transparent=True):
     for vector_name, vector_dict in data.items():
         ax.hist(vector_dict['y'], label=vector_name, bins=bins, alpha=alpha)
 
-    finish_plot(fig, ax, title, darkmode=darkmode, transparent=transparent)
+    finish_plot(fig, ax, title, darkmode=darkmode, transparent=transparent, disable_axes_ticks=disable_axes_ticks)
 if __name__ == '__main__':
     # make a list of random numbers so we can test the histogram
     histogram_data1 = np.random.uniform(-3, 3, 1000).tolist()
@@ -106,13 +202,18 @@ if __name__ == '__main__':
     # make a list of a linear and a quadratic function, so we can test the multiline plot
     multiplot_data1 = np.linspace(0, 10, 100)
     multiplot_data2 = multiplot_data1 ** 2
-    muliplot_data_dict = {'linear': {'y': multiplot_data1}, 'quadratic': {'y': multiplot_data2, 'x': multiplot_data1}}
+    muliplot_data_dict = {'linear': {'y': multiplot_data1, 'y_label': 'test1'}, 'quadratic': {'y': multiplot_data2, 'x': multiplot_data1, 'x_label': 'test2'}}
 
     print('Testing multiline plot whitemode')
     multiline_plot('Test multiline plot', muliplot_data_dict)
     print('Testing multiline plot darkmode')
     multiline_plot('Test multiline plot', muliplot_data_dict, darkmode=True)
     print('finished testing multiline plot')
+
+    print('Testing multiplot whitemode')
+    multi_plot('Test multiplot', muliplot_data_dict)
+    print('Testing multiplot darkmode')
+    multi_plot('Test multiplot', muliplot_data_dict, darkmode=True)
 
     print('Testing histogram whitemode')
     histogram('Test histogram', histogram_data_dict)
