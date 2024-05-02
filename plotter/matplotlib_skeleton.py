@@ -17,7 +17,15 @@ rex_green = '#c7f296'
 linecolors = [rex_orange, rex_green]
 spinecolor = rex_orange #change to darkblue if too aggressive
 
-default_font_size = 13
+# set the default figure size #
+plt.rcParams['figure.figsize'] = [5, 5]
+
+# adjust h spacing
+plt.rcParams['figure.constrained_layout.hspace'] = 0.02 # default is 0.02
+
+# set the default font size
+plt.rcParams.update({'font.size': 13})
+
 # ToDo: implement T.rex AI fonts
 def get_company_linecolors(darkmode=False):
     if darkmode:
@@ -35,7 +43,6 @@ def finish_plot(fig, title, darkmode=True, transparent=True, disable_axes_ticks=
     fig.set_size_inches(5, 5)
 
     # set the title, if we have multiple axes then we will have to set the title for the center plot in the top column
-    fig.suptitle(title, fontsize=default_font_size, color=fontcolor)
 
     for ax in axes:
 
@@ -85,7 +92,8 @@ def multiline_plot(title, data: dict(), darkmode=False, transparent=True, disabl
             # vector_dict = {'x': x_data, 'y': y_data, 'y_label': y_label, 'x_label': x_label}
     # if x is not provided, we will assume that the x axis is the index of the vector
 
-    plt.rcParams.update({'font.size': default_font_size})
+    # set the default figure size #
+    plt.rcParams['figure.figsize'] = [5, 5]
 
     for vector_name, vector_dict in data.items():
         if 'y_label' not in vector_dict:
@@ -111,6 +119,7 @@ def multiline_plot(title, data: dict(), darkmode=False, transparent=True, disabl
         linecolors = get_company_linecolors(darkmode)
     else:
         linecolors = plt.cm.viridis(np.linspace(0, 1, len(data)))
+
     for vector_name, vector_dict in data.items():
         # check if x is provided
         if 'x' not in vector_dict:
@@ -139,7 +148,6 @@ def multi_plot(title, data: dict(), num_rows='auto', num_columns='auto', darkmod
     # num_rows and num_columns are the number of rows and columns to use in the plot
     # if not provided, it will be calculated automatically to ensure even distribution
 
-    plt.rcParams.update({'font.size': default_font_size})
 
     if num_rows == 'auto' and num_columns == 'auto':
         # calculate the number of rows and columns to use
@@ -153,7 +161,10 @@ def multi_plot(title, data: dict(), num_rows='auto', num_columns='auto', darkmod
     else: # both are provided, make sure they fit the data
         assert num_rows * num_columns >= len(data), 'num_rows * num_columns must be greater than or equal to the number of plots'
 
-    fig, axs = plt.subplots(num_rows, num_columns)
+
+    # adjust multiplot size based on number of plots
+    fig, axs = plt.subplots(num_rows, num_columns, figsize=(5*num_columns, 3*num_rows))
+
     for vector_name, vector_dict in data.items():
         # check if x is provided
         if 'x' not in vector_dict:
@@ -183,9 +194,8 @@ def histogram(title, data, bins=None, darkmode=False, transparent=True, disable_
         # due to histogram format x data is not needed - it can be provided but will not be used
     # bins is the number of bins to use in the histogram, if not provided, it will be calculated automatically by combining all vectors to ensure even distribution
 
-    plt.rcParams.update({'font.size': default_font_size})
-
-
+    # set the default figure size #
+    plt.rcParams['figure.figsize'] = [5, 5]
 
     if bins is None:
         # first combine all the data into a vector and make a histogram to autodetermine the number of bins
@@ -211,6 +221,7 @@ def histogram(title, data, bins=None, darkmode=False, transparent=True, disable_
         ax.hist(vector_dict['y'], label=vector_name, bins=bins, alpha=alpha, color=color.pop(0))
 
     finish_plot(fig, title, darkmode=darkmode, transparent=transparent, disable_axes_ticks=disable_axes_ticks)
+
 if __name__ == '__main__':
     # make a list of random numbers so we can test the histogram
     histogram_data1 = np.random.uniform(-3, 3, 1000).tolist()
@@ -219,7 +230,7 @@ if __name__ == '__main__':
     # make a list of a linear and a quadratic function, so we can test the multiline plot
     multiplot_data1 = np.linspace(0, 10, 100)
     multiplot_data2 = multiplot_data1 ** 2
-    muliplot_data_dict = {'linear': {'y': multiplot_data1, 'y_label': 'test1'}, 'quadratic': {'y': multiplot_data2, 'x': multiplot_data1, 'x_label': 'test2'}}
+    muliplot_data_dict = {'linear': {'y': multiplot_data1, 'y_label': 'test1'}, 'quadratic': {'y': multiplot_data2, 'x': multiplot_data1, 'x_label': 'test2'}, 'cubic': {'y': multiplot_data2 ** 2, 'x': multiplot_data1, 'x_label': 'test3'}}
 
     print('Testing multiline plot whitemode')
     multiline_plot('Test multiline plot', muliplot_data_dict)
