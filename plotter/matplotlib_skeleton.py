@@ -10,20 +10,27 @@ import numpy as np
 
 # use company colors as default
 rex_orange = '#fa6140'
-offwhite = '#fffdef'
-darkblue = '#1a363d'
+rex_offwhite = '#fffdef'
+rex_darkblue = '#1a363d'
+rex_green = '#c7f296'
+
+linecolors = [rex_orange, rex_green]
 spinecolor = rex_orange #change to darkblue if too aggressive
 
 default_font_size = 13
 # ToDo: implement T.rex AI fonts
-
+def get_company_linecolors(darkmode=False):
+    if darkmode:
+        return [rex_orange, rex_green, rex_darkblue]
+    else:
+        return [rex_orange, rex_green, rex_offwhite]
 def finish_plot(fig, title, darkmode=True, transparent=True, disable_axes_ticks=False):
     if transparent:
         plt.gcf().patch.set_facecolor('none')
     elif not transparent and darkmode:
         plt.gcf().patch.set_facecolor('black')
     axes = plt.gcf().get_axes()
-    fontcolor = offwhite if darkmode else darkblue
+    fontcolor = rex_offwhite if darkmode else rex_darkblue
 
     fig.set_size_inches(5, 5)
 
@@ -99,13 +106,18 @@ def multiline_plot(title, data: dict(), darkmode=False, transparent=True, disabl
 
 
     fig, ax = plt.subplots()
+    # if the number of vectors is less or equal to 3, we will use the company colors
+    if len(data) <= 3:
+        linecolors = get_company_linecolors(darkmode)
+    else:
+        linecolors = plt.cm.viridis(np.linspace(0, 1, len(data)))
     for vector_name, vector_dict in data.items():
         # check if x is provided
         if 'x' not in vector_dict:
             vector_dict['x'] = list(range(len(vector_dict['y'])))
 
 
-        ax.plot(vector_dict['x'], vector_dict['y'], label=vector_name)
+        ax.plot(vector_dict['x'], vector_dict['y'], label=vector_name, color=linecolors.pop(0))
 
     ax.set_xlabel(x_label)
     ax.set_ylabel(y_label)
@@ -154,7 +166,7 @@ def multi_plot(title, data: dict(), num_rows='auto', num_columns='auto', darkmod
 
         # get the current axis
         ax = axs.flatten()[list(data.keys()).index(vector_name)]
-        ax.plot(vector_dict['x'], vector_dict['y'], label=vector_name)
+        ax.plot(vector_dict['x'], vector_dict['y'], label=vector_name, color=rex_orange)
         ax.set_ylabel(vector_dict['y_label'])
         ax.set_xlabel(vector_dict['x_label'])
 
@@ -173,6 +185,8 @@ def histogram(title, data, bins=None, darkmode=False, transparent=True, disable_
 
     plt.rcParams.update({'font.size': default_font_size})
 
+
+
     if bins is None:
         # first combine all the data into a vector and make a histogram to autodetermine the number of bins
         all_data = []
@@ -189,9 +203,12 @@ def histogram(title, data, bins=None, darkmode=False, transparent=True, disable_
     # if more than 1 key in the dictionary, we will plot all the histograms in the same plot and we'll adjust the opacity
 
     alpha = 0.5 if len(data.keys()) > 1 else 1
-
+    if len(data) <= 3:
+        color = get_company_linecolors(darkmode)
+    else:
+        color = plt.cm.viridis(np.linspace(0, 1, len(data)))
     for vector_name, vector_dict in data.items():
-        ax.hist(vector_dict['y'], label=vector_name, bins=bins, alpha=alpha)
+        ax.hist(vector_dict['y'], label=vector_name, bins=bins, alpha=alpha, color=color.pop(0))
 
     finish_plot(fig, title, darkmode=darkmode, transparent=transparent, disable_axes_ticks=disable_axes_ticks)
 if __name__ == '__main__':
