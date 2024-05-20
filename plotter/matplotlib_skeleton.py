@@ -92,9 +92,6 @@ def multiline_plot(title, data: dict(), darkmode=False, transparent=True, disabl
             # vector_dict = {'x': x_data, 'y': y_data, 'y_label': y_label, 'x_label': x_label}
     # if x is not provided, we will assume that the x axis is the index of the vector
 
-    # set the default figure size #
-    plt.rcParams['figure.figsize'] = [5, 5]
-
     for vector_name, vector_dict in data.items():
         if 'y_label' not in vector_dict:
             vector_dict['y_label'] = vector_name
@@ -132,8 +129,7 @@ def multiline_plot(title, data: dict(), darkmode=False, transparent=True, disabl
     ax.set_ylabel(y_label)
 
     finish_plot(fig, title, darkmode=darkmode, transparent=transparent, disable_axes_ticks=disable_axes_ticks)
-
-def multi_plot(title, data: dict(), num_rows='auto', num_columns='auto', darkmode=False, transparent=True, disable_axes_ticks=False):
+def multi_plot(title, data: dict(), num_rows='auto', num_columns='auto', figsize=[10, 10], darkmode=False, transparent=True, sharex=True, sharey=True, disable_axes_ticks=False):
     # this function will take a dict of data and plot it as a multiplot
     # title is the title of the plot
     # x_axis_title is the title of the x axis
@@ -162,8 +158,11 @@ def multi_plot(title, data: dict(), num_rows='auto', num_columns='auto', darkmod
         assert num_rows * num_columns >= len(data), 'num_rows * num_columns must be greater than or equal to the number of plots'
 
 
+    # set the default figure size #
+    plt.rcParams['figure.figsize'] = [figsize[0], figsize[1]]
+
     # adjust multiplot size based on number of plots
-    fig, axs = plt.subplots(num_rows, num_columns, figsize=(5*num_columns, 3*num_rows))
+    fig, axs = plt.subplots(num_rows, num_columns, sharex=sharex, sharey=sharey) #ToDo: we're assuming that we always want to share x and y axes, this may not always be the case
 
     for vector_name, vector_dict in data.items():
         # check if x is provided
@@ -178,12 +177,11 @@ def multi_plot(title, data: dict(), num_rows='auto', num_columns='auto', darkmod
         # get the current axis
         ax = axs.flatten()[list(data.keys()).index(vector_name)]
         ax.plot(vector_dict['x'], vector_dict['y'], label=vector_name, color=rex_orange)
-        ax.set_ylabel(vector_dict['y_label'])
-        ax.set_xlabel(vector_dict['x_label'])
+        # ax.set_ylabel(vector_dict['y_label'])
+        # ax.set_xlabel(vector_dict['x_label'])
 
 
     finish_plot(fig, title, darkmode=darkmode, transparent=transparent, disable_axes_ticks=disable_axes_ticks)
-
 def histogram(title, data, bins=None, darkmode=False, transparent=True, disable_axes_ticks=False):
     # this function will take a list of data and plot it as a histogram
     # title is the title of the plot
@@ -231,6 +229,13 @@ if __name__ == '__main__':
     multiplot_data1 = np.linspace(0, 10, 100)
     multiplot_data2 = multiplot_data1 ** 2
     muliplot_data_dict = {'linear': {'y': multiplot_data1, 'y_label': 'test1'}, 'quadratic': {'y': multiplot_data2, 'x': multiplot_data1, 'x_label': 'test2'}, 'cubic': {'y': multiplot_data2 ** 2, 'x': multiplot_data1, 'x_label': 'test3'}}
+    muliplot_data2_dict = {'linear': {'y': multiplot_data1, 'y_label': 'test1'},
+                          'quadratic': {'y': multiplot_data2, 'x': multiplot_data1, 'x_label': 'test2'},
+                          'cubic': {'y': multiplot_data2 ** 2, 'x': multiplot_data1, 'x_label': 'test3'},
+                           'linear2': {'y': multiplot_data1, 'y_label': 'test1'},
+                           'quadratic2': {'y': multiplot_data2, 'x': multiplot_data1, 'x_label': 'test2'},
+                           'cubic2': {'y': multiplot_data2 ** 2, 'x': multiplot_data1, 'x_label': 'test3'}
+                           }
 
     print('Testing multiline plot whitemode')
     multiline_plot('Test multiline plot', muliplot_data_dict)
@@ -239,9 +244,9 @@ if __name__ == '__main__':
     print('finished testing multiline plot')
 
     print('Testing multiplot whitemode')
-    multi_plot('Test multiplot', muliplot_data_dict)
+    multi_plot('Test multiplot', muliplot_data2_dict)
     print('Testing multiplot darkmode')
-    multi_plot('Test multiplot', muliplot_data_dict, darkmode=True)
+    multi_plot('Test multiplot', muliplot_data2_dict, darkmode=True)
 
     print('Testing histogram whitemode')
     histogram('Test histogram', histogram_data_dict)
